@@ -1,0 +1,10 @@
+services:
+  fastapi-server:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - API_TOKEN=${API_TOKEN}
+    volumes:
+      - ./outputs:/app/outputs
+    restart: unless-stopped
