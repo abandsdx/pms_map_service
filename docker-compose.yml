@@ -4,7 +4,8 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - API_TOKEN=${API_TOKEN}
+      # - MASTER_KEY=your_super_secret_master_key # Uncomment and set your master key here
+      - API_TOKEN=${API_TOKEN} # This is currently unused but kept for potential future use
     volumes:
       - ./outputs:/app/outputs
     restart: unless-stopped
