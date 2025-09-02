@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>📡 Real-time Log Viewer</title>
+    <style>
+        /* Shared styles */
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background-color: #f4f4f9; color: #333; }
+        .container { max-width: 1000px; margin: 1em auto; background: #fff; padding: 2em; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #5a5a5a; border-bottom: 1px solid #eee; padding-bottom: 0.5em;}
+        nav { background: #333; padding: 1em; text-align: center; }
+        nav a { color: white; text-decoration: none; margin: 0 1em; font-size: 1.1em; }
+        nav a.active { font-weight: bold; text-decoration: underline; }
+        /* Log page specific styles */
+        .status-bar { padding: 10px; margin-bottom: 1em; border-radius: 4px; text-align: center; }
+        .status-bar span { font-weight: bold; }
+        .status-connected { background-color: #d4edda; color: #155724; }
+        .status-disconnected { background-color: #f8d7da; color: #721c24; }
+        .status-connecting { background-color: #e9f7ff; color: #004085; }
+        .log { background: #2b2b2b; color: #f0f0f0; border: 1px solid #ddd; padding: 10px; height: 60vh; overflow-y: auto; font-family: monospace; }
+        .log-entry { margin-bottom: 10px; white-space: pre-wrap; }
+        .log-entry pre { margin: 0; }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/" class="active">Log Viewer</a>
+        <a href="/settings">MQTT Settings</a>
+        <a href="/admin">Admin</a>
+    </nav>
+    <div class="container">
+        <h1>📄 Real-time Logs</h1>
+        <div id="status-bar" class="status-bar status-connecting">
+            WebSocket: <span id="ws-status">Connecting...</span> |
+            MQTT Broker: <span id="mqtt-status">Unknown</span>
+        </div>
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        const token = prompt("Please enter your API Key to view logs:");
+        if (!token) {
+            alert("API Key is required to connect.");
+            document.body.innerHTML = "API Key required. Please refresh and enter a valid key.";
+        } else {
+            const log = document.getElementById('log');
+            const wsStatus = document.getElementById('ws-status');
+            const mqttStatus = document.getElementById('mqtt-status');
+            const statusBar = document.getElementById('status-bar');
+
+            const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws?token=${token}`);
+
+            ws.onopen = () => {
+                wsStatus.textContent = "Connected";
+            };
+
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+
+                // Check for special status update messages from backend
+                if (message.type === 'system_status' && message.data.mqtt_status) {
+                    mqttStatus.textContent = message.data.mqtt_status;
+                    if (message.data.mqtt_status.toLowerCase().includes('connected')) {
+                        statusBar.className = 'status-bar status-connected';
+                    } else if (message.data.mqtt_status.toLowerCase().includes('error')) {
+                        statusBar.className = 'status-bar status-disconnected';
+                    } else {
+                        statusBar.className = 'status-bar status-connecting';
+                    }
+                    return; // Don't print system messages to log
+                }
+
+                // Regular log entry
+                const entry = document.createElement("div");
+                entry.classList.add("log-entry");
+
+                let logTime = message._log_prefix || new Date().toLocaleString();
+                entry.innerHTML = `${logTime} [${message.type.toUpperCase()}] <pre>${JSON.stringify(message.data, null, 2)}</pre>`;
+                log.appendChild(entry);
+                log.scrollTop = log.scrollHeight;
+            };
+
+            ws.onerror = (e) => {
+                wsStatus.textContent = "Connection Error";
+                statusBar.className = 'status-bar status-disconnected';
+            };
+
+            ws.onclose = (e) => {
+                if (e.code === 4001) {
+                    wsStatus.textContent = "Disconnected (Invalid API Key)";
+                } else {
+                    wsStatus.textContent = "Disconnected";
+                }
+                mqttStatus.textContent = "N/A";
+                statusBar.className = 'status-bar status-disconnected';
+            };
+        }
+    </script>
+</body>
+</html>

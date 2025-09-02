@@ -167,7 +167,7 @@ async def broadcast_log(data: dict):
             data["_log_prefix"] = datetime.fromtimestamp(ts).strftime("[%Y/%-m/%-d %p%-I:%M:%S]")
         except (ValueError, TypeError):
             data["_log_prefix"] = "[Invalid Timestamp]"
-    if mqtt_connected:
+    if mqtt_connected and data.get("type") != "system_status":
         topic = mqtt_config["topics_by_type"].get(data.get("type"), mqtt_config["publish_topic"])
         mqtt_client.publish(topic, json.dumps(data))
 
@@ -184,6 +184,13 @@ async def broadcast_log(data: dict):
         for client in to_remove:
             clients.remove(client)
 
+async def broadcast_status_update(status_message: str):
+    """Broadcasts a system status message to all connected clients."""
+    await broadcast_log({
+        "type": "system_status",
+        "data": {"mqtt_status": status_message}
+    })
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
     """WebSocket endpoint for real-time log streaming."""
@@ -193,7 +200,14 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
     await websocket.accept()
     async with clients_lock:
         clients.append(websocket)
+
+    # Send initial status on connect
+    initial_status = "Connected" if mqtt_connected else "Not Configured or Disconnected"
     try:
+        await websocket.send_json({
+            "type": "system_status",
+            "data": {"mqtt_status": initial_status}
+        })
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
@@ -228,9 +242,12 @@ async def config_mqtt(request: Request, auth: None = Depends(verify_user_token))
         mqtt_client.subscribe(mqtt_config["subscribe_topic"])
         mqtt_client.loop_start()
         mqtt_connected = True
+        asyncio.run(broadcast_status_update(f"Connected to {mqtt_config['host']}"))
         return {"status": "connected", "config": mqtt_config}
     except Exception as e:
         mqtt_connected = False
+        error_message = f"Error: {str(e)}"
+        asyncio.run(broadcast_status_update(error_message))
         return {"status": "error", "detail": str(e)}
 
 # === Event Handling APIs ===
@@ -251,77 +268,14 @@ async def get_admin_page(request: Request):
     return templates.TemplateResponse("admin.html", {"request": request})
 
 @app.get("/", response_class=HTMLResponse, tags=["Frontend"])
-async def get_combined_ui():
-    topics_inputs = "".join([
-        f"<label>{key.capitalize()} Topic:</label><br><input type='text' id='mqttTopic_{key}' value='{topic}'><br><br>\n"
-        for key, topic in mqtt_config["topics_by_type"].items()
-    ])
-    return f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset='UTF-8'>
-    <title>📡 Real-time Log Viewer</title>
-    <style>
-        body {{ font-family: sans-serif; background: #f0f0f0; padding: 20px; }}
-        .section {{ margin-bottom: 30px; }}
-        .log {{ background: #fff; border: 1px solid #ddd; padding: 10px; height: 300px; overflow-y: auto; }}
-        .form-grid {{ display: flex; gap: 40px; }}
-        /* ... other styles ... */
-    </style>
-</head>
-<body>
-    <h1>📄 Real-time Log Viewer</h1>
-    <div class='log' id='log'></div>
+async def get_log_page(request: Request):
+    """Serves the main log viewer page."""
+    return templates.TemplateResponse("log.html", {"request": request})
 
-    <h2>⚙️ MQTT Configuration</h2>
-    <form id='mqttForm'>
-        <!-- ... form content ... -->
-        {topics_inputs}
-        <button type='submit'>Apply</button>
-    </form>
-    <div>Connection Status: <span id='mqttStatus'>Not Configured</span></div>
-
-    <script>
-        const token = prompt("Please enter your API Key:");
-        if (!token) {{
-            alert("API Key is required to connect.");
-            document.body.innerHTML = "API Key required.";
-        }} else {{
-            const log = document.getElementById('log');
-            const mqttForm = document.getElementById('mqttForm');
-            const mqttStatus = document.getElementById('mqttStatus');
-            const ws = new WebSocket(`${{location.protocol === 'https:' ? 'wss:' : 'ws:'}}//${{location.host}}/ws?token=${{token}}`);
-
-            ws.onopen = () => {{ mqttStatus.textContent = "WebSocket connected. Configure MQTT to see logs."; }};
-            ws.onmessage = (event) => {{
-                // ... message handling logic ...
-            }};
-            ws.onerror = (e) => {{ mqttStatus.textContent = "❌ WebSocket connection error."; }};
-            ws.onclose = (e) => {{
-                if (e.code === 4001) {{
-                    mqttStatus.textContent = "❌ WebSocket disconnected: Invalid API Key.";
-                }} else {{
-                    mqttStatus.textContent = "❌ WebSocket disconnected.";
-                }}
-            }};
-
-            mqttForm.onsubmit = async (e) => {{
-                e.preventDefault();
-                // ... form submission logic ...
-                const res = await fetch("/api/config-mqtt", {{
-                    method: "POST",
-                    headers: {{ "Content-Type": "application/json", "Authorization": `Bearer ${{token}}` }},
-                    body: JSON.stringify(body)
-                }});
-                const result = await res.json();
-                mqttStatus.textContent = result.status === "connected" ? "✅ MQTT Connected" : `❌ MQTT Error: ${{result.detail}}`;
-            }};
-        }}
-    </script>
-</body>
-</html>
-"""
+@app.get("/settings", response_class=HTMLResponse, tags=["Frontend"])
+async def get_settings_page(request: Request):
+    """Serves the MQTT settings page."""
+    return templates.TemplateResponse("settings.html", {"request": request, "config": mqtt_config})
 
 @app.get("/health", tags=["Health"])
 def health_check():
