@@ -29,12 +29,20 @@
 
 ### 1. 設定主金鑰 (建議作法)
 
-設定此服務最簡單且安全的方式是建立一個 `.env` 檔案。`docker-compose` 會自動讀取此檔案中的環境變數。
+設定此服務最簡單且安全的方式是使用一個環境變數檔案。
 
--   **建立 `.env` 檔案**：在專案的根目錄下（與 `docker-compose.yml` 同層級）建立一個名為 `.env` 的檔案。
--   **產生並加入您的主金鑰**：在 `.env` 檔案中加入您的主金鑰。您可以使用 `openssl rand -hex 16` 來產生一個安全的金鑰。檔案內容應如下：
+-   **複製範例檔案**：在專案的根目錄下，將 `.env.example` 檔案複製為一個名為 `.env` 的新檔案。
+    ```bash
+    cp .env.example .env
     ```
-    MASTER_KEY=your_super_secret_master_key_here
+-   **編輯 `.env` 檔案**：打開新的 `.env` 檔案。
+-   **產生並設定您的主金鑰**：將檔案中的 placeholder 值替換為一個真實、安全的金鑰。您可以使用以下指令來產生一個新金鑰：
+    ```bash
+    openssl rand -hex 16
+    ```
+    您最終的 `.env` 檔案看起來應該像這樣：
+    ```
+    MASTER_KEY=your_super_secret_master_key_generated_above
     ```
 
 ### 2. 建置並運行服務
