@@ -12,6 +12,7 @@ RUN mkdir -p /app/outputs
 
 # 複製應用程式原始碼
 COPY app ./app
+COPY locales ./locales
 
 # 複製並設定啟動腳本
 COPY entrypoint.sh .
