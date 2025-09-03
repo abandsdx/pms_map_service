@@ -73,12 +73,12 @@ This service uses a two-tier authentication system:
 ### 1. Generate a User API Key
 
 -   Navigate to `http://localhost:8000/admin`.
--   Enter the **Master Key** you configured in `docker-compose.yml`.
+-   Enter the **Master Key** you configured in `docker-compose.yml`. The key will be remembered for your browser session.
 -   Click "Generate New Key" to create a user-level API key. Copy this key for the next steps.
 
 ### 2. Use the Service
 
--   **Real-time Log Viewer**: Navigate to `http://localhost:8000/`. You will be prompted to enter a **User API Key**.
+-   **Real-time Log Viewer & Settings**: Navigate to `http://localhost:8000/` or `/settings`. If you haven't entered a key yet, you will be prompted for a **User API Key**. The key will be remembered for your browser session, so you only need to enter it once per session.
 -   **MQTT & Event APIs**: When calling endpoints like `/api/config-mqtt` or `/api/status`, include the **User API Key** in the Authorization header:
     ```bash
     curl -X POST http://localhost:8000/api/config-mqtt \

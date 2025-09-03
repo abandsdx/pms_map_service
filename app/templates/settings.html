@@ -30,43 +30,47 @@
     <div class="container">
         <h1>⚙️ MQTT Configuration</h1>
         <p>Configure the connection to your MQTT Broker. Note: In the current version, these settings are global and affect all users.</p>
-        <form id="mqttForm">
-            <div class="form-grid">
-                <div>
-                    <h3>Broker Connection</h3>
-                    <label for="mqttHost">Host:</label><br>
-                    <input type="text" id="mqttHost" value="{{ config.host }}"><br>
-                    <label for="mqttPort">Port:</label><br>
-                    <input type="number" id="mqttPort" value="{{ config.port }}"><br>
-                    <label for="mqttUser">Username:</label><br>
-                    <input type="text" id="mqttUser" value="{{ config.username }}"><br>
-                    <label for="mqttPass">Password:</label><br>
-                    <input type="password" id="mqttPass" value="{{ config.password }}"><br>
+        <div id="main-content">
+            <form id="mqttForm">
+                <div class="form-grid">
+                    <div>
+                        <h3>Broker Connection</h3>
+                        <label for="mqttHost">Host:</label><br>
+                        <input type="text" id="mqttHost" value="{{ config.host }}"><br>
+                        <label for="mqttPort">Port:</label><br>
+                        <input type="number" id="mqttPort" value="{{ config.port }}"><br>
+                        <label for="mqttUser">Username:</label><br>
+                        <input type="text" id="mqttUser" value="{{ config.username }}"><br>
+                        <label for="mqttPass">Password:</label><br>
+                        <input type="password" id="mqttPass" value="{{ config.password }}"><br>
+                    </div>
+                    <div>
+                        <h3>Topics</h3>
+                        <label for="mqttSub">Subscribe Topic (for receiving):</label><br>
+                        <input type="text" id="mqttSub" value="{{ config.subscribe_topic }}"><br>
+                        <label for="mqttPub">Default Publish Topic:</label><br>
+                        <input type="text" id="mqttPub" value="{{ config.publish_topic }}"><br>
+                        {% for key, topic in config.topics_by_type.items() %}
+                        <label for="mqttTopic_{{ key }}">{{ key.capitalize() }} Publish Topic:</label><br>
+                        <input type="text" id="mqttTopic_{{ key }}" value="{{ topic }}"><br>
+                        {% endfor %}
+                    </div>
                 </div>
-                <div>
-                    <h3>Topics</h3>
-                    <label for="mqttSub">Subscribe Topic (for receiving):</label><br>
-                    <input type="text" id="mqttSub" value="{{ config.subscribe_topic }}"><br>
-                    <label for="mqttPub">Default Publish Topic:</label><br>
-                    <input type="text" id="mqttPub" value="{{ config.publish_topic }}"><br>
-                    {% for key, topic in config.topics_by_type.items() %}
-                    <label for="mqttTopic_{{ key }}">{{ key.capitalize() }} Publish Topic:</label><br>
-                    <input type="text" id="mqttTopic_{{ key }}" value="{{ topic }}"><br>
-                    {% endfor %}
-                </div>
-            </div>
-            <br>
-            <button type="submit">Apply Configuration</button>
-        </form>
-        <div id="response-message"></div>
+                <br>
+                <button type="submit">Apply Configuration</button>
+            </form>
+            <div id="response-message"></div>
+        </div>
     </div>
 
     <script>
-        const token = prompt("Please enter your API Key to modify settings:");
-        if (!token) {
-            alert("API Key is required to modify settings.");
-            document.body.innerHTML = "API Key required. Please refresh and enter a valid key.";
-        } else {
+        function initializePage(token) {
+            if (!token) {
+                document.getElementById('main-content').innerHTML = "API Key required. Please refresh and enter a valid key, or get one from the <a href='/admin'>Admin</a> page.";
+                return;
+            }
+            sessionStorage.setItem('userApiKey', token);
+
             const mqttForm = document.getElementById('mqttForm');
             const responseMessage = document.getElementById('response-message');
 
@@ -107,11 +111,24 @@
                     responseMessage.className = 'success';
                 } else {
                     const errorDetail = result.detail || "Unknown error";
+                    if (res.status === 403) {
+                         sessionStorage.removeItem('userApiKey'); // Clear invalid key
+                    }
                     responseMessage.textContent = `❌ Error: ${errorDetail}`;
                     responseMessage.className = 'error';
                 }
             };
         }
+
+        function init() {
+            let token = sessionStorage.getItem('userApiKey');
+            if (!token) {
+                token = prompt("Please enter your API Key to modify settings:");
+            }
+            initializePage(token);
+        }
+
+        init();
     </script>
 </body>
 </html>
