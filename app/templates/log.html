@@ -110,17 +110,18 @@
         }
 
         function init() {
+            // Language persistence check runs first
             const savedLang = localStorage.getItem('lang');
             if (savedLang && savedLang !== langCode) {
                 window.location.href = `/log?lang=${savedLang}`;
-                return;
+                return; // Stop execution to allow redirect
             }
 
             const userApiKey = sessionStorage.getItem('userApiKey');
             const role = sessionStorage.getItem('apiRole');
 
             if (!userApiKey) {
-                alert('Access denied. Please login first.');
+                alert(i18n.alert_access_denied || 'Access denied. Please login first.');
                 window.location.href = `/?lang=${savedLang || langCode}`;
                 return;
             }

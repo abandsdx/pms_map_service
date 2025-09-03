@@ -55,12 +55,11 @@
             window.location.href = `/?lang=${newLang}`;
         });
 
-        document.addEventListener('DOMContentLoaded', () => {
-            const savedLang = localStorage.getItem('lang');
-            if (savedLang && savedLang !== langCode) {
-                window.location.href = `/?lang=${savedLang}`;
-            }
-        });
+        // Language persistence logic, runs immediately
+        const savedLang = localStorage.getItem('lang');
+        if (savedLang && savedLang !== langCode) {
+            window.location.href = `/?lang=${savedLang}`;
+        }
     </script>
 </body>
 </html>

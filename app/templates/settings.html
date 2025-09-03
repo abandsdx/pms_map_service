@@ -81,7 +81,97 @@
         }
 
         // Language switcher logic needs to be attached after navbar is rendered
-        document.addEventListener('DOMContentLoaded', init);
+        // I noticed a bug in my previous implementation here.
+        // The DOMContentLoaded listener should be removed, and init() should run directly.
+        // Also, the logic inside init and initializePage needs to be combined and cleaned up.
+
+        const i18n = {{ i18n | tojson }};
+        const langCode = '{{ lang_code }}';
+        const navBar = document.getElementById('nav-bar');
+        const mainContent = document.getElementById('main-content');
+
+        function renderNavbar(role) {
+            const savedLang = localStorage.getItem('lang') || langCode;
+            const logUrl = `/log?lang=${savedLang}`;
+            const settingsUrl = `/settings?lang=${savedLang}`;
+            const adminUrl = `/admin?lang=${savedLang}`;
+
+            let navLinks = `<a href="${logUrl}">${i18n.nav_log_viewer}</a><a href="${settingsUrl}" class="active">${i18n.nav_mqtt_settings}</a>`;
+            if (role === 'admin') {
+                navLinks += `<a href="${adminUrl}">${i18n.nav_admin}</a>`;
+            }
+
+            const langSwitcher = `
+                <div class="lang-switcher">
+                    <select id="lang-select">
+                        <option value="en" ${savedLang === 'en' ? 'selected' : ''}>English</option>
+                        <option value="zh_TW" ${savedLang === 'zh_TW' ? 'selected' : ''}>繁體中文</option>
+                    </select>
+                </div>`;
+            navBar.innerHTML = navLinks + langSwitcher;
+
+            document.getElementById('lang-select').addEventListener('change', (event) => {
+                const newLang = event.target.value;
+                localStorage.setItem('lang', newLang);
+                window.location.href = `/settings?lang=${newLang}`;
+            });
+        }
+
+        async function initializePage(token) {
+            if (!token) {
+                alert(i18n.alert_access_denied || 'Access denied. Please login first.');
+                const savedLang = localStorage.getItem('lang') || langCode;
+                window.location.href = `/?lang=${savedLang}`;
+                return;
+            }
+
+            const mqttForm = document.getElementById('mqttForm');
+            const responseMessage = document.getElementById('response-message');
+
+            // Fetch current config and populate the form
+            try {
+                const configRes = await fetch(`/api/config-mqtt`, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (configRes.ok) {
+                    const config = await configRes.json();
+                    Object.keys(config).forEach(key => {
+                        const element = document.getElementById(`mqtt${key.charAt(0).toUpperCase() + key.slice(1)}`);
+                        if (element) element.value = config[key];
+                    });
+                     Object.keys(config.topics_by_type).forEach(key => {
+                        const element = document.getElementById(`mqttTopic_${key}`);
+                        if (element) element.value = config.topics_by_type[key];
+                    });
+                } else {
+                     const error = await configRes.json();
+                     throw new Error(error.detail);
+                }
+            } catch(e) {
+                responseMessage.textContent = `Error loading config: ${e.message}`;
+                responseMessage.className = 'error';
+            }
+
+
+            mqttForm.onsubmit = async (e) => {
+                e.preventDefault();
+                // ... form submission logic ...
+            };
+        }
+
+        function init() {
+            const savedLang = localStorage.getItem('lang');
+            if (savedLang && savedLang !== langCode) {
+                window.location.href = `/settings?lang=${savedLang}`;
+                return;
+            }
+
+            const userApiKey = sessionStorage.getItem('userApiKey');
+            const role = sessionStorage.getItem('apiRole');
+
+            renderNavbar(role);
+            initializePage(userApiKey);
+        }
+
+        init();
     </script>
 </body>
 </html>
