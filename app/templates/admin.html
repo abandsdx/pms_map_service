@@ -147,17 +147,19 @@
         generateBtn.addEventListener('click', generateKey);
 
         function init() {
+            // Language persistence check runs first
             const savedLang = localStorage.getItem('lang');
             if (savedLang && savedLang !== langCode) {
                 window.location.href = `/admin?lang=${savedLang}`;
-                return;
+                return; // Stop execution to allow redirect
             }
 
             masterKey = sessionStorage.getItem('masterKey');
             const role = sessionStorage.getItem('apiRole');
 
             if (!masterKey || role !== 'admin') {
-                alert('Access denied. Please login as an administrator.');
+                // Use i18n for alert
+                alert(i18n.admin_access_denied || 'Access denied. Please login as an administrator.');
                 window.location.href = `/?lang=${savedLang || langCode}`;
                 return;
             }
