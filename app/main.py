@@ -232,46 +232,51 @@ async def handle_event(event_type: str, request: Request, user_key: str = Depend
     return {"status": "ok"}
 
 # === i18n Language Loading ===
-def get_language(lang: str = Query("en", alias="lang")):
-    """Dependency to load the correct language file."""
-    lang_file = f"locales/{lang}.json"
-    if not os.path.exists(lang_file):
-        lang = "en" # Default to English if language not found
-        lang_file = "locales/en.json"
-    with open(lang_file, "r") as f:
-        return json.load(f)
+# A simple cache for language files
+_i18n_cache = {}
+
+def get_language_pack(lang: str = Query("en", alias="lang")):
+    """Dependency to load the correct language file and code."""
+    valid_langs = {"en", "zh_TW"}
+    lang_code = lang if lang in valid_langs else "en"
+
+    if lang_code in _i18n_cache:
+        return {"lang_code": lang_code, "i18n": _i18n_cache[lang_code]}
+
+    lang_file = f"locales/{lang_code}.json"
+    try:
+        with open(lang_file, "r", encoding="utf-8") as f:
+            translations = json.load(f)
+            _i18n_cache[lang_code] = translations
+            return {"lang_code": lang_code, "i18n": translations}
+    except (FileNotFoundError, json.JSONDecodeError):
+        # Fallback to English if file is missing or corrupt
+        with open("locales/en.json", "r", encoding="utf-8") as f:
+            translations = json.load(f)
+            _i18n_cache["en"] = translations
+            return {"lang_code": "en", "i18n": translations}
 
 # === Frontend & Docs ===
 @app.get("/admin", response_class=HTMLResponse, tags=["Frontend"])
-async def get_admin_page(request: Request, i18n: dict = Depends(get_language)):
+async def get_admin_page(request: Request, lang_pack: dict = Depends(get_language_pack)):
     """Serves the admin page for key management."""
-    return templates.TemplateResponse("admin.html", {"request": request, "i18n": i18n})
+    return templates.TemplateResponse("admin.html", {"request": request, **lang_pack})
 
 @app.get("/", response_class=HTMLResponse, tags=["Frontend"])
-async def get_login_page(request: Request, i18n: dict = Depends(get_language)):
+async def get_login_page(request: Request, lang_pack: dict = Depends(get_language_pack)):
     """Serves the main login page."""
-    return templates.TemplateResponse("login.html", {"request": request, "i18n": i18n})
+    return templates.TemplateResponse("login.html", {"request": request, **lang_pack})
 
 @app.get("/log", response_class=HTMLResponse, tags=["Frontend"])
-async def get_log_page(request: Request, i18n: dict = Depends(get_language)):
+async def get_log_page(request: Request, lang_pack: dict = Depends(get_language_pack)):
     """Serves the main log viewer page."""
-    return templates.TemplateResponse("log.html", {"request": request, "i18n": i18n})
+    return templates.TemplateResponse("log.html", {"request": request, **lang_pack})
 
 @app.get("/settings", response_class=HTMLResponse, tags=["Frontend"])
-async def get_settings_page(request: Request, i18n: dict = Depends(get_language)):
+async def get_settings_page(request: Request, lang_pack: dict = Depends(get_language_pack)):
     """Serves the MQTT settings page."""
-    # This part will need a user context to fetch the right config.
-    # For now, we pass a default config structure.
-    # The actual values will be fetched by JS after authentication.
-    default_config = {
-        "host": "localhost", "port": 1883, "username": "", "password": "",
-        "subscribe_topic": "robot/events", "publish_topic": "robot/events",
-        "topics_by_type": {
-            "arrival": "robot/arrival", "status": "robot/status",
-            "exception": "robot/exception", "control": "robot/control"
-        }
-    }
-    return templates.TemplateResponse("settings.html", {"request": request, "i18n": i18n, "config": default_config})
+    # The config is now fetched by the frontend, so we don't need to pass it here.
+    return templates.TemplateResponse("settings.html", {"request": request, **lang_pack})
 
 @app.get("/health", tags=["Health"])
 def health_check():
