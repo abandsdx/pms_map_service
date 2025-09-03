@@ -73,12 +73,12 @@
 ### 1. 產生使用者 API 金鑰
 
 -   前往 `http://localhost:8000/admin`。
--   輸入您在 `docker-compose.yml` 中設定的**主金鑰**。
+-   輸入您在 `docker-compose.yml` 中設定的**主金鑰**。金鑰會被儲存在您的瀏覽器 session 中，在分頁關閉前都無須重新輸入。
 -   點擊「產生新金鑰」來建立一個使用者級別的 API 金鑰。複製此金鑰以供後續步驟使用。
 
 ### 2. 使用服務
 
--   **即時日誌檢視器**：前往 `http://localhost:8000/`。頁面會提示您輸入一個**使用者 API 金鑰**。
+-   **即時日誌檢視器 & MQTT 設定**：前往 `http://localhost:8000/` 或 `/settings`。如果您尚未輸入金鑰，頁面會提示您輸入一個**使用者 API 金鑰**。此金鑰同樣會被記在瀏覽器 session 中，在同一個分頁中切換頁面不需重新輸入。
 -   **MQTT 與事件 API**：當呼叫像 `/api/config-mqtt` 或 `/api/status` 這樣的端點時，請在 Authorization 標頭中附上**使用者 API 金鑰**：
     ```bash
     curl -X POST http://localhost:8000/api/config-mqtt \

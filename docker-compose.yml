@@ -4,8 +4,11 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # - MASTER_KEY=your_super_secret_master_key # Uncomment and set your master key here
+      # The MASTER_KEY should be set in a .env file. See README.md for details.
+      - MASTER_KEY=${MASTER_KEY}
       - API_TOKEN=${API_TOKEN} # This is currently unused but kept for potential future use
     volumes:
       - ./outputs:/app/outputs
+      # Mount the api_keys.txt file to persist user keys across container restarts.
+      - ./api_keys.txt:/app/api_keys.txt
     restart: unless-stopped

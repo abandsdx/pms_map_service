@@ -38,15 +38,18 @@
     </div>
 
     <script>
-        const token = prompt("Please enter your API Key to view logs:");
-        if (!token) {
-            alert("API Key is required to connect.");
-            document.body.innerHTML = "API Key required. Please refresh and enter a valid key.";
-        } else {
-            const log = document.getElementById('log');
-            const wsStatus = document.getElementById('ws-status');
-            const mqttStatus = document.getElementById('mqtt-status');
-            const statusBar = document.getElementById('status-bar');
+        const log = document.getElementById('log');
+        const wsStatus = document.getElementById('ws-status');
+        const mqttStatus = document.getElementById('mqtt-status');
+        const statusBar = document.getElementById('status-bar');
+
+        function connectWebSocket(token) {
+            if (!token) {
+                document.body.innerHTML = "API Key required. Please refresh and enter a valid key, or generate one from the <a href='/admin'>Admin</a> page.";
+                return;
+            }
+
+            sessionStorage.setItem('userApiKey', token);
 
             const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws?token=${token}`);
 
@@ -57,7 +60,6 @@
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
 
-                // Check for special status update messages from backend
                 if (message.type === 'system_status' && message.data.mqtt_status) {
                     mqttStatus.textContent = message.data.mqtt_status;
                     if (message.data.mqtt_status.toLowerCase().includes('connected')) {
@@ -67,10 +69,9 @@
                     } else {
                         statusBar.className = 'status-bar status-connecting';
                     }
-                    return; // Don't print system messages to log
+                    return;
                 }
 
-                // Regular log entry
                 const entry = document.createElement("div");
                 entry.classList.add("log-entry");
 
@@ -88,6 +89,7 @@
             ws.onclose = (e) => {
                 if (e.code === 4001) {
                     wsStatus.textContent = "Disconnected (Invalid API Key)";
+                    sessionStorage.removeItem('userApiKey'); // Clear invalid key
                 } else {
                     wsStatus.textContent = "Disconnected";
                 }
@@ -95,6 +97,16 @@
                 statusBar.className = 'status-bar status-disconnected';
             };
         }
+
+        function init() {
+            let token = sessionStorage.getItem('userApiKey');
+            if (!token) {
+                token = prompt("Please enter your API Key to view logs:");
+            }
+            connectWebSocket(token);
+        }
+
+        init();
     </script>
 </body>
 </html>
