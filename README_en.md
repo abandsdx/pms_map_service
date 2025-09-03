@@ -2,116 +2,83 @@
 
 ## Overview
 
-This application serves as a bridge and utility tool for interacting with Nuwa Robotics services. It performs two primary functions:
+This application serves as a bridge and utility tool for interacting with Nuwa Robotics services. It has been refactored into a multi-tenant capable service with advanced authentication and internationalization.
 
-1.  **Map Data Downloader**: It fetches map data and images from the Nuwa Robotics Mission (RMS) API, processes them, and serves them through a local API.
-2.  **Real-time Log Viewer**: It connects to an MQTT broker to receive and send robot-related events, displaying them in real-time on a web interface.
-
-The application is built with FastAPI, features a dynamic API key management system, and is designed to be run with Docker.
+Its primary functions are:
+1.  **Per-User MQTT Log Streaming**: Each user can configure their own MQTT broker settings. The service will establish a dedicated connection for them and stream logs in real-time to a web interface.
+2.  **Map Data Downloader**: Fetches map data and images from the Nuwa Robotics Mission (RMS) API.
+3.  **Key Management**: A secure, two-tier system for managing access to the service itself.
 
 ## Features
 
--   **Dynamic API Key Management**: Securely manage user access via a master key-protected admin interface. Generate, list, and revoke user keys without restarting the service.
+-   **Multi-Tenant MQTT**: Each user can have their own independent MQTT broker configuration, which is saved persistently.
+-   **Dynamic API Key Management**: A secure admin panel, protected by a master key, allows for generating and revoking user API keys on-the-fly.
+-   **Unified Login**: A single login page intelligently directs users to the admin panel or the log viewer based on the type of key they provide (master or user).
+-   **Internationalization (i18n)**: Frontend is fully bilingual with support for English and Traditional Chinese (繁體中文), with English as the default.
 -   **Automatic Master Key Generation**: On first launch, a secure master key is automatically generated if one isn't provided, simplifying initial setup.
--   **Dynamic Map Fetching**: Trigger a background task to download and parse the latest map data from the Nuwa RMS API.
--   **Data Persistence**: Map images, processed JSON data, and user API keys are stored on local volumes to prevent data loss.
--   **Segregated Outputs**: Handles multiple Nuwa RMS tokens by storing map data in separate directories based on a hash of the token.
--   **Real-time Event/Log Monitoring**: A WebSocket-based web UI for viewing live logs from an MQTT message broker, protected by user API keys.
--   **Containerized**: Easy to deploy and run using Docker and Docker Compose.
-
-## Key Management
-
-This service uses a two-tier authentication system:
--   **Master Key**: A high-privilege key used exclusively to access the admin interface at `/admin` for managing user keys. It is configured via the `MASTER_KEY` environment variable.
--   **User API Keys**: Standard keys used to access the regular features of the service, such as the log viewer WebSocket and the MQTT configuration API. These keys are managed by the administrator via the `/admin` page.
+-   **Data Persistence**: All configurations (user keys, MQTT settings) are stored in persistent JSON files mounted as volumes.
 
 ## Getting Started
 
 ### 1. Configure the Master Key (Recommended)
 
-The easiest and most secure way to set up the service is by using an environment file.
-
--   **Copy the example file**: In the root of the project, copy the `.env.example` file to a new file named `.env`.
-    ```bash
-    cp .env.example .env
+-   **Copy the example file**: `cp .env.example .env`
+-   **Set your Master Key**: Open the new `.env` file and replace the placeholder with a real, secure key (e.g., generated with `openssl rand -hex 16`).
     ```
--   **Edit the `.env` file**: Open the new `.env` file.
--   **Generate and set your Master Key**: Replace the placeholder value with a real, secure key. You can generate a new key with the following command:
-    ```bash
-    openssl rand -hex 16
-    ```
-    Your final `.env` file should look like this:
-    ```
-    MASTER_KEY=your_super_secret_master_key_generated_above
+    MASTER_KEY=your_super_secret_master_key_here
     ```
 
 ### 2. Build and Run the Service
-
-Once the `.env` file is in place, you can build and run the container in the background:
 ```bash
 docker-compose up -d --build
 ```
-The service will start at `http://localhost:8000`. Because you provided the `MASTER_KEY`, it will be used directly.
+The service will start at `http://localhost:8000`.
 
 ### Alternative: First-Time Auto-Generation
+If you start the service without a `.env` file, it will generate a Master Key and print it to the console. Copy this key into a new `.env` file for future use.
 
-If you start the service by running `docker-compose up` *without* creating a `.env` file, the application will automatically generate a Master Key for you and print it to the console logs. You can then copy this key and place it in your `.env` file as described in step 1 for future deployments.
+## Usage Workflow
 
-### Data Persistence Note
+### 1. Login
+-   Navigate to the main page: `http://localhost:8000/`.
+-   You will be presented with a unified login page.
 
-The `docker-compose.yml` file is configured to mount `./api_keys.txt` as a volume. This ensures that any User API Keys you generate through the admin panel are saved on your host machine and persist across container restarts.
+### 2. Admin: Create a User Key
+-   On the login page, enter your **Master Key**.
+-   You will be redirected to the `/admin` panel.
+-   Click "Generate New Key" to create a User API Key. Copy it.
+-   You can switch the admin panel language using the dropdown in the top right.
 
-## Usage
-
-### 1. Generate a User API Key
-
--   Navigate to `http://localhost:8000/admin`.
--   Enter the **Master Key** you configured in your `.env` file. The key will be remembered for your browser session.
--   Click "Generate New Key" to create a user-level API key. Copy this key for the next steps.
-
-### 2. Use the Service
-
--   **Real-time Log Viewer & Settings**: Navigate to `http://localhost:8000/` or `/settings`. If you haven't entered a key yet, you will be prompted for a **User API Key**. The key will be remembered for your browser session, so you only need to enter it once per session.
--   **MQTT & Event APIs**: When calling endpoints like `/api/config-mqtt` or `/api/status`, include the **User API Key** in the Authorization header:
-    ```bash
-    curl -X POST http://localhost:8000/api/config-mqtt \
-         -H "Authorization: Bearer YOUR_USER_API_KEY" \
-         -d '{...}'
-    ```
--   **Map Download APIs**: These endpoints use the **Nuwa RMS Token**, not the service's User API Key.
-    ```bash
-    curl -X POST http://localhost:8000/trigger-refresh \
-         -H "Authorization: Bearer YOUR_NUWA_API_TOKEN"
-    ```
-
-## API Endpoints
-
--   `GET /`: Main log viewer UI.
--   `GET /admin`: Admin page for key management.
--   `POST /api/admin/generate-key`: (Admin) Generate a new user key.
--   `POST /api/admin/revoke-key`: (Admin) Revoke a user key.
--   `GET /api/admin/keys`: (Admin) List all user keys.
--   `POST /api/config-mqtt`: (User) Configure MQTT connection.
--   `POST /api/{event_type}`: (User) Post an event.
--   `WS /ws`: (User) WebSocket for log streaming.
--   `POST /trigger-refresh`: (Nuwa Token) Trigger map download.
--   `GET /field-map`: (Nuwa Token) Get map data.
--   `GET /health`: Health check.
+### 3. User: Configure MQTT and View Logs
+-   Go back to the main login page (`/`).
+-   Enter the **User API Key** you just generated.
+-   You will be redirected to the `/log` page.
+-   Use the navigation bar to go to `/settings`. Here you can enter the details for your personal MQTT broker. The settings will be saved for your key.
+-   Return to the `/log` page to see the real-time logs from your configured broker.
+-   The language can be switched at any time using the dropdown. Your preference will be remembered for the session.
 
 ## Project Structure
 
 ```
 .
 ├── app/
-│   ├── auth.py             # Authentication & key management logic
-│   ├── main.py             # FastAPI application, API endpoints
+│   ├── auth.py             # Authentication & API key logic
+│   ├── main.py             # FastAPI application, endpoints, WebSocket logic
 │   ├── map_downloader.py   # Logic for fetching map data
+│   ├── mqtt_manager.py     # Per-user MQTT connection management
 │   └── templates/
-│       └── admin.html      # HTML/JS for the admin page
-├── api_keys.txt            # Stores user API keys
+│       ├── admin.html      # Admin page
+│       ├── log.html        # Log viewer page
+│       ├── login.html      # Unified login page
+│       └── settings.html   # MQTT settings page
+├── locales/
+│   ├── en.json             # English UI strings
+│   └── zh_TW.json          # Traditional Chinese UI strings
+├── api_keys.txt            # Persisted storage for user API keys
+├── mqtt_configs.json       # Persisted storage for per-user MQTT configs
 ├── docker-compose.yml      # Docker Compose configuration
 ├── Dockerfile              # Instructions for building the image
-├── entrypoint.sh           # Startup script for key generation
-├── .env                    # Environment file for secrets (e.g., MASTER_KEY)
+├── entrypoint.sh           # Startup script for master key generation
+├── .env.example            # Example environment file
 └── requirements.txt        # Python dependencies
 ```
