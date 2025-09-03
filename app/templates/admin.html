@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ i18n.admin_panel_title }}</title>
     <style>
-        /* Styles remain the same */
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background-color: #f4f4f9; color: #333; }
         .container { max-width: 800px; margin: 1em auto; background: #fff; padding: 2em; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
         h1, h2 { color: #5a5a5a; border-bottom: 1px solid #eee; padding-bottom: 0.5em;}
@@ -14,93 +13,160 @@
         nav a.active { font-weight: bold; text-decoration: underline; }
         .lang-switcher { margin-left: auto; }
         .lang-switcher select { background-color: #555; color: white; border: 1px solid #666; padding: 5px; border-radius: 4px; }
-        .hidden { display: none; }
-        #login-view, #management-view { margin-top: 1em; }
-        input[type="password"] { width: calc(100% - 22px); padding: 10px; margin-bottom: 1em; border: 1px solid #ccc; border-radius: 4px; }
         button { padding: 10px 15px; border: none; background-color: #007bff; color: white; border-radius: 4px; cursor: pointer; font-size: 1em; margin-right: 10px; }
         button:hover { background-color: #0056b3; }
-        .notice { background-color: #e9f7ff; border-left: 5px solid #007bff; padding: 1em; margin-bottom: 1.5em; }
         #key-list { list-style-type: none; padding: 0; }
         #key-list li { font-family: monospace; background: #eee; padding: 10px; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; border-radius: 4px; }
         .revoke-btn, #logout-btn { background-color: #dc3545; }
         .revoke-btn:hover, #logout-btn:hover { background-color: #c82333; }
         #new-key-display { background: #d4edda; color: #155724; padding: 1em; margin-top: 1em; border-radius: 4px; word-wrap: break-word; font-family: monospace; }
+        .hidden { display: none; }
         #error-message { color: #dc3545; margin-top: 1em; }
     </style>
 </head>
 <body>
-    <nav>
-        <a href="/log?lang={{ lang_code }}">{{ i18n.nav_log_viewer }}</a>
-        <a href="/settings?lang={{ lang_code }}">{{ i18n.nav_mqtt_settings }}</a>
-        <a href="/admin?lang={{ lang_code }}" class="active">{{ i18n.nav_admin }}</a>
-        <div class="lang-switcher">
-            <select id="lang-select">
-                <option value="en" {% if lang_code == 'en' %}selected{% endif %}>English</option>
-                <option value="zh_TW" {% if lang_code == 'zh_TW' %}selected{% endif %}>繁體中文</option>
-            </select>
-        </div>
-    </nav>
-    <div class="container">
-        <div id="login-view">
-            <h1>{{ i18n.admin_login_title }}</h1>
-            <div class="notice">
-                <p><strong>{{ i18n.admin_notice_p1 }}</strong></p>
-                <p>{{ i18n.admin_notice_p2 }}</p>
-                <p><strong>{{ i18n.admin_notice_p3 }}</strong></p>
-            </div>
-            <input type="password" id="master-key-input" placeholder="{{ i18n.admin_master_key_placeholder }}">
-            <button id="login-btn">{{ i18n.admin_login_button }}</button>
-            <p id="error-message" class="hidden"></p>
-        </div>
-
-        <div id="management-view" class="hidden">
-            <h1>{{ i18n.admin_panel_title }}</h1>
-            <button id="generate-btn">{{ i18n.admin_generate_button }}</button>
-            <button id="logout-btn">{{ i18n.admin_logout_button }}</button>
-            <div id="new-key-display" class="hidden"></div>
-
-            <h2>{{ i18n.admin_existing_keys_title }}</h2>
-            <ul id="key-list"></ul>
-        </div>
+    <nav id="nav-bar"></nav>
+    <div class="container" id="management-view">
+        <h1>{{ i18n.admin_panel_title }}</h1>
+        <button id="generate-btn">{{ i18n.admin_generate_button }}</button>
+        <button id="logout-btn">{{ i18n.admin_logout_button }}</button>
+        <div id="new-key-display" class="hidden"></div>
+        <p id="error-message" class="hidden"></p>
+        <h2>{{ i18n.admin_existing_keys_title }}</h2>
+        <ul id="key-list"></ul>
     </div>
 
     <script>
-        // Pass i18n strings from Jinja2 to JavaScript
         const i18n = {{ i18n | tojson }};
         const langCode = '{{ lang_code }}';
 
-        const loginView = document.getElementById('login-view');
-        // ... (rest of element getters are the same)
+        const managementView = document.getElementById('management-view');
+        const logoutBtn = document.getElementById('logout-btn');
+        const generateBtn = document.getElementById('generate-btn');
+        const newKeyDisplay = document.getElementById('new-key-display');
+        const keyList = document.getElementById('key-list');
+        const errorMessage = document.getElementById('error-message');
+        const navBar = document.getElementById('nav-bar');
 
-        // The JS logic remains mostly the same, but uses i18n object for strings
-        async function revokeKey(key) {
-            const confirmMsg = i18n.admin_confirm_revoke.replace('{key}', key);
-            if (!confirm(confirmMsg)) return;
-            // ...
+        let masterKey = '';
+
+        function renderNavbar(role) {
+            const savedLang = localStorage.getItem('lang') || langCode;
+            const logUrl = `/log?lang=${savedLang}`;
+            const settingsUrl = `/settings?lang=${savedLang}`;
+            const adminUrl = `/admin?lang=${savedLang}`;
+
+            let navLinks = `<a href="${logUrl}">${i18n.nav_log_viewer}</a><a href="${settingsUrl}">${i18n.nav_mqtt_settings}</a>`;
+            if (role === 'admin') {
+                navLinks += `<a href="${adminUrl}" class="active">${i18n.nav_admin}</a>`;
+            }
+
+            const langSwitcher = `
+                <div class="lang-switcher">
+                    <select id="lang-select">
+                        <option value="en" ${savedLang === 'en' ? 'selected' : ''}>English</option>
+                        <option value="zh_TW" ${savedLang === 'zh_TW' ? 'selected' : ''}>繁體中文</option>
+                    </select>
+                </div>`;
+            navBar.innerHTML = navLinks + langSwitcher;
+
+            document.getElementById('lang-select').addEventListener('change', (event) => {
+                const newLang = event.target.value;
+                localStorage.setItem('lang', newLang);
+                window.location.href = `/admin?lang=${newLang}`;
+            });
         }
 
-        async function generateKey() {
-            //...
-            if (data && data.new_key) {
-                newKeyDisplay.textContent = i18n.admin_new_key_success.replace('{key}', data.new_key);
-                // ...
+        async function apiCall(endpoint, method = 'GET', body = null) {
+            errorMessage.classList.add('hidden');
+            const headers = { 'Authorization': `Bearer ${masterKey}` };
+            const options = { method, headers };
+            if (body) {
+                headers['Content-Type'] = 'application/json';
+                options.body = JSON.stringify(body);
+            }
+            try {
+                const response = await fetch(endpoint, options);
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({ detail: `HTTP error! Status: ${response.status}` }));
+                    throw new Error(error.detail);
+                }
+                return response.status === 204 ? {} : await response.json();
+            } catch (error) {
+                errorMessage.textContent = i18n.api_error.replace('{message}', error.message);
+                errorMessage.classList.remove('hidden');
+                if (error.message.toLowerCase().includes('unauthorized') || error.message.toLowerCase().includes('invalid')) {
+                    sessionStorage.clear();
+                    window.location.href = `/?lang=${localStorage.getItem('lang') || langCode}`;
+                }
+                return null;
             }
         }
 
-        // Language switcher logic
-        const langSelect = document.getElementById('lang-select');
-        langSelect.addEventListener('change', (event) => {
-            const newLang = event.target.value;
-            const currentUrl = new URL(window.location);
-            currentUrl.searchParams.set('lang', newLang);
-            window.location.href = currentUrl.toString();
+        async function loadKeys() {
+            const data = await apiCall('/api/admin/keys');
+            if (data && data.user_keys) {
+                keyList.innerHTML = '';
+                data.user_keys.forEach(key => {
+                    const li = document.createElement('li');
+                    li.textContent = key;
+                    const revokeBtn = document.createElement('button');
+                    revokeBtn.textContent = i18n.admin_revoke_button;
+                    revokeBtn.className = 'revoke-btn';
+                    revokeBtn.onclick = () => revokeKey(key);
+                    li.appendChild(revokeBtn);
+                    keyList.appendChild(li);
+                });
+            }
+        }
+
+        async function generateKey() {
+            newKeyDisplay.classList.add('hidden');
+            const data = await apiCall('/api/admin/generate-key', 'POST');
+            if (data && data.new_key) {
+                newKeyDisplay.textContent = i18n.admin_new_key_success.replace('{key}', data.new_key);
+                newKeyDisplay.classList.remove('hidden');
+                await loadKeys();
+            }
+        }
+
+        async function revokeKey(key) {
+            const confirmMsg = i18n.admin_confirm_revoke.replace('{key}', key);
+            if (!confirm(confirmMsg)) return;
+            const data = await apiCall('/api/admin/revoke-key', 'POST', { key_to_revoke: key });
+            if (data) {
+                await loadKeys();
+            }
+        }
+
+        logoutBtn.addEventListener('click', () => {
+            sessionStorage.clear();
+            window.location.href = `/?lang=${localStorage.getItem('lang') || langCode}`;
         });
 
-        // The rest of the JS logic is the same, just ensure any user-facing strings
-        // like in `alert()` or `errorMessage.textContent` use `i18n.key`.
-        // For example:
-        // alert(i18n.alert_key_required);
-        // errorMessage.textContent = i18n.api_error.replace('{message}', error.message);
+        generateBtn.addEventListener('click', generateKey);
+
+        function init() {
+            const savedLang = localStorage.getItem('lang');
+            if (savedLang && savedLang !== langCode) {
+                window.location.href = `/admin?lang=${savedLang}`;
+                return;
+            }
+
+            masterKey = sessionStorage.getItem('masterKey');
+            const role = sessionStorage.getItem('apiRole');
+
+            if (!masterKey || role !== 'admin') {
+                alert('Access denied. Please login as an administrator.');
+                window.location.href = `/?lang=${savedLang || langCode}`;
+                return;
+            }
+
+            renderNavbar(role);
+            loadKeys();
+        }
+
+        init();
     </script>
 </body>
 </html>
