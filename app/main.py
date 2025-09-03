@@ -263,9 +263,9 @@ async def get_admin_page(request: Request, lang_pack: dict = Depends(get_languag
     return templates.TemplateResponse("admin.html", {"request": request, **lang_pack})
 
 @app.get("/", response_class=HTMLResponse, tags=["Frontend"])
-async def get_login_page(request: Request, lang_pack: dict = Depends(get_language_pack)):
-    """Serves the main login page."""
-    return templates.TemplateResponse("login.html", {"request": request, **lang_pack})
+async def get_login_page(request: Request):
+    """Serves a simple Hello World page for debugging."""
+    return HTMLResponse("<h1>Hello, World</h1>")
 
 @app.get("/log", response_class=HTMLResponse, tags=["Frontend"])
 async def get_log_page(request: Request, lang_pack: dict = Depends(get_language_pack)):
