@@ -29,12 +29,20 @@ This service uses a two-tier authentication system:
 
 ### 1. Configure the Master Key (Recommended)
 
-The easiest and most secure way to set up the service is by creating a `.env` file. `docker-compose` will automatically load this file.
+The easiest and most secure way to set up the service is by using an environment file.
 
--   **Create a `.env` file** in the root of the project, next to `docker-compose.yml`.
--   **Generate and add your Master Key** to the `.env` file. You can generate a secure key with `openssl rand -hex 16`. The file content should be:
+-   **Copy the example file**: In the root of the project, copy the `.env.example` file to a new file named `.env`.
+    ```bash
+    cp .env.example .env
     ```
-    MASTER_KEY=your_super_secret_master_key_here
+-   **Edit the `.env` file**: Open the new `.env` file.
+-   **Generate and set your Master Key**: Replace the placeholder value with a real, secure key. You can generate a new key with the following command:
+    ```bash
+    openssl rand -hex 16
+    ```
+    Your final `.env` file should look like this:
+    ```
+    MASTER_KEY=your_super_secret_master_key_generated_above
     ```
 
 ### 2. Build and Run the Service
