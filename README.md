@@ -27,53 +27,38 @@
 
 ## 開始使用
 
-1.  **複製專案原始碼：**
-    ```bash
-    git clone <repository-url>
-    cd <repository-directory>
+### 1. 設定主金鑰 (建議作法)
+
+設定此服務最簡單且安全的方式是建立一個 `.env` 檔案。`docker-compose` 會自動讀取此檔案中的環境變數。
+
+-   **建立 `.env` 檔案**：在專案的根目錄下（與 `docker-compose.yml` 同層級）建立一個名為 `.env` 的檔案。
+-   **產生並加入您的主金鑰**：在 `.env` 檔案中加入您的主金鑰。您可以使用 `openssl rand -hex 16` 來產生一個安全的金鑰。檔案內容應如下：
+    ```
+    MASTER_KEY=your_super_secret_master_key_here
     ```
 
-2.  **首次啟動與主金鑰設定：**
-    使用 Docker Compose 來建置映像檔並啟動服務。
-    ```bash
-    docker-compose up
-    ```
-    在首次運行時，服務會偵測到 `MASTER_KEY` 尚未設定，因此會自動產生一個新的，並在您的終端機日誌中用一個顯眼的區塊印出。
+### 2. 建置並運行服務
 
-    **請在日誌中尋找以下訊息：**
-    ```
-    #####################################################################
-    #  警告：未偵測到 MASTER_KEY 環境變數。                             #
-    #  您的主金鑰是：                                                   #
-    #      some_long_randomly_generated_hex_string                        #
-    #  請將此金鑰加入到您的 docker-compose.yml 檔案中...                #
-    #####################################################################
-    ```
+當 `.env` 檔案設定好後，您就可以在背景建置並運行容器：
+```bash
+docker-compose up -d --build
+```
+服務將會啟動於 `http://localhost:8000`。因為您已經提供了 `MASTER_KEY`，系統將會直接使用它。
 
-3.  **設定主金鑰：**
-    -   從日誌中複製那個自動產生的主金鑰。
-    -   停止服務 (`Ctrl+C`)。
-    -   打開 `docker-compose.yml` 檔案，並用您複製的金鑰來設定 `MASTER_KEY` 環境變數。
-        ```yaml
-        services:
-          fastapi-server:
-            environment:
-              - MASTER_KEY=your_super_secret_master_key # 在此貼上您的金鑰
-        ```
-    -   儲存檔案。
+### 備用方案：首次啟動自動產生
 
-4.  **以分離模式運行：**
-    現在金鑰已設定完成，您可以在背景模式下運行服務。
-    ```bash
-    docker-compose up -d
-    ```
+如果您在執行 `docker-compose up` 時**沒有**建立 `.env` 檔案，應用程式將會自動為您產生一個主金鑰，並將其顯示在終端機的日誌中。您可以複製這個金鑰，並依照步驟一的說明將它儲存到您的 `.env` 檔案中，以供未來部署使用。
+
+### 關於資料持久化
+
+`docker-compose.yml` 檔案已設定將本地的 `./api_keys.txt` 檔案掛載為 volume。這可以確保您透過管理頁面產生的所有使用者 API 金鑰，都會被保存在您的主機上，並在容器重啟後依然存在。
 
 ## 使用說明
 
 ### 1. 產生使用者 API 金鑰
 
 -   前往 `http://localhost:8000/admin`。
--   輸入您在 `docker-compose.yml` 中設定的**主金鑰**。金鑰會被儲存在您的瀏覽器 session 中，在分頁關閉前都無須重新輸入。
+-   輸入您在 `.env` 檔案中設定的**主金鑰**。金鑰會被儲存在您的瀏覽器 session 中，在分頁關閉前都無須重新輸入。
 -   點擊「產生新金鑰」來建立一個使用者級別的 API 金鑰。複製此金鑰以供後續步驟使用。
 
 ### 2. 使用服務
@@ -119,5 +104,6 @@
 ├── docker-compose.yml      # Docker Compose 設定
 ├── Dockerfile              # 用於建置映像檔的說明
 ├── entrypoint.sh           # 用於金鑰產生的啟動腳本
+├── .env                    # 環境變數檔案 (例如 MASTER_KEY)
 └── requirements.txt        # Python 依賴套件
 ```

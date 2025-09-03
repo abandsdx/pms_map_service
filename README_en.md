@@ -27,53 +27,38 @@ This service uses a two-tier authentication system:
 
 ## Getting Started
 
-1.  **Clone the repository:**
-    ```bash
-    git clone <repository-url>
-    cd <repository-directory>
+### 1. Configure the Master Key (Recommended)
+
+The easiest and most secure way to set up the service is by creating a `.env` file. `docker-compose` will automatically load this file.
+
+-   **Create a `.env` file** in the root of the project, next to `docker-compose.yml`.
+-   **Generate and add your Master Key** to the `.env` file. You can generate a secure key with `openssl rand -hex 16`. The file content should be:
+    ```
+    MASTER_KEY=your_super_secret_master_key_here
     ```
 
-2.  **First-time Launch & Master Key Setup:**
-    Run Docker Compose to build and start the service.
-    ```bash
-    docker-compose up
-    ```
-    On the very first run, the service will detect that no `MASTER_KEY` is set, generate a new one, and print it to your console in a prominent block.
+### 2. Build and Run the Service
 
-    **Look for this message in the logs:**
-    ```
-    #####################################################################
-    #  WARNING: MASTER_KEY environment variable not set.                #
-    #  Your Master Key is:                                              #
-    #      some_long_randomly_generated_hex_string                        #
-    #  Please add this to your docker-compose.yml file...               #
-    #####################################################################
-    ```
+Once the `.env` file is in place, you can build and run the container in the background:
+```bash
+docker-compose up -d --build
+```
+The service will start at `http://localhost:8000`. Because you provided the `MASTER_KEY`, it will be used directly.
 
-3.  **Configure the Master Key:**
-    -   Copy the generated master key from the log.
-    -   Stop the service (`Ctrl+C`).
-    -   Open `docker-compose.yml` and set the `MASTER_KEY` environment variable with the key you copied.
-        ```yaml
-        services:
-          fastapi-server:
-            environment:
-              - MASTER_KEY=your_super_secret_master_key # Paste your key here
-        ```
-    -   Save the file.
+### Alternative: First-Time Auto-Generation
 
-4.  **Run in Detached Mode:**
-    Now that the key is configured, you can run the service in the background.
-    ```bash
-    docker-compose up -d
-    ```
+If you start the service by running `docker-compose up` *without* creating a `.env` file, the application will automatically generate a Master Key for you and print it to the console logs. You can then copy this key and place it in your `.env` file as described in step 1 for future deployments.
+
+### Data Persistence Note
+
+The `docker-compose.yml` file is configured to mount `./api_keys.txt` as a volume. This ensures that any User API Keys you generate through the admin panel are saved on your host machine and persist across container restarts.
 
 ## Usage
 
 ### 1. Generate a User API Key
 
 -   Navigate to `http://localhost:8000/admin`.
--   Enter the **Master Key** you configured in `docker-compose.yml`. The key will be remembered for your browser session.
+-   Enter the **Master Key** you configured in your `.env` file. The key will be remembered for your browser session.
 -   Click "Generate New Key" to create a user-level API key. Copy this key for the next steps.
 
 ### 2. Use the Service
@@ -119,5 +104,6 @@ This service uses a two-tier authentication system:
 ├── docker-compose.yml      # Docker Compose configuration
 ├── Dockerfile              # Instructions for building the image
 ├── entrypoint.sh           # Startup script for key generation
+├── .env                    # Environment file for secrets (e.g., MASTER_KEY)
 └── requirements.txt        # Python dependencies
 ```
