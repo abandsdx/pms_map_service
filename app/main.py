@@ -119,6 +119,53 @@ async def revoke_user_key(request: RevokeKeyRequest):
         return {"status": "success", "revoked_key": request.key_to_revoke}
     raise HTTPException(status_code=404, detail="Key not found or failed to revoke key.")
 
+# === Incoming Data Endpoints ===
+async def broadcast_to_all(data: dict):
+    """Helper function to broadcast a message to all connected WebSocket clients."""
+    all_user_keys = list(ws_manager.active_connections.keys())
+    for user_key in all_user_keys:
+        await ws_manager.broadcast_to_user(user_key, data)
+
+@app.post("/api/status", tags=["Incoming Data"])
+async def post_status(request: Request):
+    """Endpoint to receive status updates and broadcast them to clients."""
+    try:
+        data = await request.json()
+        await broadcast_to_all({"type": "status", "data": data})
+        return {"status": "received"}
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload.")
+
+@app.post("/api/arrival", tags=["Incoming Data"])
+async def post_arrival(request: Request):
+    """Endpoint to receive arrival data and broadcast it to clients."""
+    try:
+        data = await request.json()
+        await broadcast_to_all({"type": "arrival", "data": data})
+        return {"status": "received"}
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload.")
+
+@app.post("/api/exception", tags=["Incoming Data"])
+async def post_exception(request: Request):
+    """Endpoint to receive exception data and broadcast it to clients."""
+    try:
+        data = await request.json()
+        await broadcast_to_all({"type": "exception", "data": data})
+        return {"status": "received"}
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload.")
+
+@app.post("/api/control", tags=["Incoming Data"])
+async def post_control(request: Request):
+    """Endpoint to receive control data and broadcast it to clients."""
+    try:
+        data = await request.json()
+        await broadcast_to_all({"type": "control", "data": data})
+        return {"status": "received"}
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload.")
+
 # === Map Download APIs ===
 @app.post("/trigger-refresh", tags=["Maps"])
 def trigger_refresh(background_tasks: BackgroundTasks, authorization: str = Header(None)):
