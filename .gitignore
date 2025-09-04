@@ -6,3 +6,10 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# Ignore environment file
+.env
+
+# Ignore persisted data files
+api_keys.txt
+mqtt_configs.json
