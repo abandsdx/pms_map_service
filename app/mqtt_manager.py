@@ -67,6 +67,9 @@ class ConnectionManager:
                 return json.loads(content)
         except FileNotFoundError:
             return {}
+        except IsADirectoryError:
+            logger.error(f"The path {self.config_file} is a directory, not a file. Please remove it.")
+            return {}
         except json.JSONDecodeError:
             logger.error(f"Could not decode JSON from {self.config_file}")
             return {}

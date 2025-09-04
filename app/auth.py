@@ -21,6 +21,10 @@ class KeyManager:
         self.reload_keys()
 
     def _ensure_keys_file_exists(self):
+        if self.keys_file.is_dir():
+            logger.error(f"The path {self.keys_file} is a directory, not a file. Please remove it.")
+            raise IsADirectoryError(f"The path {self.keys_file} is a directory, not a file.")
+
         if not self.keys_file.exists():
             logger.info(f"Key file not found at {self.keys_file}. Creating an empty file.")
             try:
