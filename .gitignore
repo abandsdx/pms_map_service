@@ -10,6 +10,6 @@ __pycache__/
 # Ignore environment file
 .env
 
-# Ignore persisted data files
-api_keys.txt
-mqtt_configs.json
+# The empty files api_keys.txt and mqtt_configs.json are checked in
+# as templates to prevent Docker from creating directories with the same
+# names when using volume mounts.
