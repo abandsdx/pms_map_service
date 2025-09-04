@@ -1,374 +1,218 @@
 import os
 import asyncio
 import json
+import secrets
 from datetime import datetime
-from typing import List
-from fastapi.responses import HTMLResponse
-from fastapi import Request
+from typing import List, Dict, Set
 
 from fastapi import (
     FastAPI, BackgroundTasks, Header, HTTPException, Depends,
     WebSocket, WebSocketDisconnect, Request, Query
 )
+from fastapi.templating import Jinja2Templates
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.openapi.utils import get_openapi
+from pydantic import BaseModel
 
-import paho.mqtt.client as mqtt
-
-# === 自定義模組 ===
+# === Custom Modules ===
 from app.map_downloader import download_and_parse_maps, get_token_hash
+from app.auth import key_manager
+from app.mqtt_manager import ConnectionManager
 
-app = FastAPI()
+app = FastAPI(title="Nuwa Map and Log Service")
 OUTPUT_DIR = "outputs"
-mounted_folders = set()  # 記錄已掛載的資料夾，避免重複掛載
+mounted_folders = set()
 
-# === MQTT 與 WebSocket 狀態 ===
-clients: List[WebSocket] = []
-clients_lock = asyncio.Lock()
-mqtt_client = None
-mqtt_connected = False
-mqtt_incoming_queue = asyncio.Queue()
+# Setup Jinja2 templates
+templates = Jinja2Templates(directory="app/templates")
 
-# === 驗證設定 ===
-SECRET_TOKEN = "nuwa8888"
-STATUS_MAPPING = {
-    "ST-M1001": "收到任務申請",
-    "ST-M1002": "新建調度任務",
-    "ST-M1003": "到達取貨點",
-    "ST-M1004": "送物點到達",
-    "ST-M1005": "達成額外結束條件",
-    "ST-M1006": "任務結束",
-    "ST-M1007": "任務結束(使用者退件)",
-    "ST-M1008": "任務結束返回",
-    "ST-M1009": "到點通知",
-    "ST-M1010": "任務結束返回-已返回待命點",
-    "ST-N1001": "通知住戶",
-    "ST-N1002": "等待住戶",
-    "ST-N1003": "住戶取物中",
-    "ST-EL1001": "[EL電梯] 已從某樓進入電梯",
-    "ST-EL1002": "[EL電梯] 已出電梯至某樓層",
-    "ST-VM1001": "[VM智販機] 已到達智販機取物",
-    "ST-VM1002": "[VM智販機] 已完成智販機取物",
-}
+# === WebSocket Connection Management ===
+class WebSocketManager:
+    def __init__(self):
+        self.active_connections: Dict[str, Set[WebSocket]] = {}
+        self.lock = asyncio.Lock()
 
-mqtt_config = {
-    "host": "localhost",
-    "port": 1883,
-    "username": "",
-    "password": "",
-    "subscribe_topic": "robot/events",
-    "publish_topic": "robot/events",
-    "topics_by_type": {
-        "arrival": "robot/arrival",
-        "status": "robot/status",
-        "exception": "robot/exception",
-        "control": "robot/control"
-    }
-}
+    async def connect(self, websocket: WebSocket, user_key: str):
+        await websocket.accept()
+        async with self.lock:
+            if user_key not in self.active_connections:
+                self.active_connections[user_key] = set()
+            self.active_connections[user_key].add(websocket)
 
-# === 通用驗證 ===
-def verify_token(authorization: str = Header(..., alias="Authorization")):
+    async def disconnect(self, websocket: WebSocket, user_key: str):
+        async with self.lock:
+            if user_key in self.active_connections and websocket in self.active_connections[user_key]:
+                self.active_connections[user_key].remove(websocket)
+                if not self.active_connections[user_key]:
+                    del self.active_connections[user_key]
+
+    async def broadcast_to_user(self, user_key: str, data: dict):
+        async with self.lock:
+            if user_key in self.active_connections:
+                for connection in list(self.active_connections[user_key]):
+                    try:
+                        await connection.send_json(data)
+                    except (WebSocketDisconnect, RuntimeError):
+                        self.active_connections[user_key].remove(connection)
+
+ws_manager = WebSocketManager()
+
+# === MQTT Message Handling & Broadcasting ===
+async def on_mqtt_message_callback(user_key: str, msg):
+    try:
+        payload = msg.payload.decode("utf-8")
+        data = json.loads(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        data = {"raw_payload": msg.payload.hex()}
+
+    full_message = {"type": "mqtt", "data": data}
+    await ws_manager.broadcast_to_user(user_key, full_message)
+
+mqtt_manager = ConnectionManager(config_file="mqtt_configs.json", on_message_callback=on_mqtt_message_callback)
+
+# === Authentication Dependencies ===
+def get_token_from_header(authorization: str = Header(..., alias="Authorization")):
     if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid token format")
-    token = authorization[7:]
-    if token != SECRET_TOKEN:
-        raise HTTPException(status_code=403, detail="Unauthorized")
+        raise HTTPException(status_code=401, detail="Invalid token format. Must be 'Bearer <token>'.")
+    return authorization.replace("Bearer ", "")
 
-# === 掛載資料夾 ===
-def mount_static_folder(folder_name: str):
-    if folder_name in mounted_folders:
-        return
-    folder_path = os.path.join(OUTPUT_DIR, folder_name)
-    if os.path.isdir(folder_path):
-        app.mount(f"/{folder_name}", StaticFiles(directory=folder_path), name=folder_name)
-        mounted_folders.add(folder_name)
-        print(f"✅ 動態掛載 /{folder_name} => {folder_path}")
+def verify_user_token(token: str = Depends(get_token_from_header)):
+    if not key_manager.is_valid_user_key(token):
+        raise HTTPException(status_code=403, detail="Unauthorized: Invalid or expired user key.")
+    return token
 
-# === 地圖下載觸發 API ===
-@app.post("/trigger-refresh")
+def verify_master_key(token: str = Depends(get_token_from_header)):
+    if not key_manager.is_valid_master_key(token):
+        raise HTTPException(status_code=403, detail="Unauthorized: Invalid master key.")
+    return token
+
+class LoginRequest(BaseModel):
+    key: str
+
+@app.post("/api/login", tags=["Authentication"])
+def login(request: LoginRequest):
+    key = request.key
+    if key_manager.is_valid_master_key(key):
+        return {"role": "admin", "token": key}
+    if key_manager.is_valid_user_key(key):
+        return {"role": "user", "token": key}
+    raise HTTPException(status_code=403, detail="Invalid API Key")
+
+# === Admin APIs for Key Management ===
+class RevokeKeyRequest(BaseModel):
+    key_to_revoke: str
+
+@app.get("/api/admin/keys", tags=["Admin"], dependencies=[Depends(verify_master_key)])
+async def list_user_keys():
+    return {"user_keys": key_manager.get_all_user_keys()}
+
+@app.post("/api/admin/generate-key", tags=["Admin"], dependencies=[Depends(verify_master_key)])
+async def generate_user_key():
+    new_key = secrets.token_hex(16)
+    if key_manager.add_key(new_key):
+        return {"status": "success", "new_key": new_key}
+    raise HTTPException(status_code=500, detail="Failed to add new key to key file.")
+
+@app.post("/api/admin/revoke-key", tags=["Admin"], dependencies=[Depends(verify_master_key)])
+async def revoke_user_key(request: RevokeKeyRequest):
+    if key_manager.revoke_key(request.key_to_revoke):
+        return {"status": "success", "revoked_key": request.key_to_revoke}
+    raise HTTPException(status_code=404, detail="Key not found or failed to revoke key.")
+
+# === Map Download APIs ===
+@app.post("/trigger-refresh", tags=["Maps"])
 def trigger_refresh(background_tasks: BackgroundTasks, authorization: str = Header(None)):
     if not authorization:
-        raise HTTPException(status_code=401, detail="Missing Authorization header")
-
+        raise HTTPException(status_code=401, detail="Missing Nuwa RMS Authorization header.")
     token_hash = get_token_hash(authorization)
+    background_tasks.add_task(download_and_parse_maps, authorization)
+    return {"status": "processing", "message": "Map update and mounting initiated."}
 
-    def task():
-        download_and_parse_maps(authorization)
-        mount_static_folder(f"{token_hash}_maps")
-
-    background_tasks.add_task(task)
-    return {"status": "processing", "message": "地圖更新與掛載中"}
-
-# === 地圖 JSON 下載 API ===
-@app.get("/field-map")
-def get_map_file(authorization: str = Header(None)):
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing Authorization header")
-    token_hash = get_token_hash(authorization)
-    json_file_path = os.path.join(OUTPUT_DIR, f"field_map_r_locations_{token_hash}.json")
-    if not os.path.exists(json_file_path):
-        return JSONResponse(status_code=404, content={"error": "尚未產生 JSON，請先觸發 /trigger-refresh"})
-    return FileResponse(json_file_path, media_type="application/json", filename=f"field_map_r_locations_{token_hash}.json")
-
-# === MQTT 初始化與訊息處理 ===
-def on_mqtt_message(client, userdata, msg):
-    payload = msg.payload.decode("utf-8")
-    try:
-        data = json.loads(payload)
-    except:
-        data = {"raw": payload}
-    asyncio.create_task(mqtt_incoming_queue.put({"type": "mqtt", "data": data}))
-
-@app.on_event("startup")
-async def startup_event():
-    async def mqtt_loop():
-        while True:
-            data = await mqtt_incoming_queue.get()
-            await broadcast_log(data)
-    asyncio.create_task(mqtt_loop())
-
-# === 廣播訊息給前端 WebSocket 與 MQTT publish ===
-async def broadcast_log(data: dict):
-    status_code = data["data"].get("status")
-    if status_code and status_code in STATUS_MAPPING:
-        data["data"]["statusText"] = STATUS_MAPPING[status_code]
-
-    if "timestamp" in data["data"]:
-        try:
-            ts = int(data["data"]["timestamp"])
-            log_time = datetime.fromtimestamp(ts).strftime("[%Y/%-m/%-d %p%-I:%M:%S]")
-            data["_log_prefix"] = log_time
-        except:
-            data["_log_prefix"] = "[時間錯誤]"
-
-    if mqtt_connected:
-        topic = mqtt_config["topics_by_type"].get(data.get("type"), mqtt_config["publish_topic"])
-        mqtt_client.publish(topic, json.dumps(data))
-
-    to_remove = []
-    async with clients_lock:
-        for client in clients:
-            try:
-                await client.send_json(data)
-            except:
-                to_remove.append(client)
-        for client in to_remove:
-            clients.remove(client)
-
-# === WebSocket endpoint ===
+# === WebSocket Endpoint ===
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
-    if token != SECRET_TOKEN:
-        await websocket.close(code=1008)
+    if not key_manager.is_valid_user_key(token):
+        await websocket.close(code=4001)
         return
-    await websocket.accept()
-    async with clients_lock:
-        clients.append(websocket)
+
+    await ws_manager.connect(websocket, token)
+    await mqtt_manager.ensure_connection(token)
+
+    client_wrapper = mqtt_manager.get_client(token)
+    initial_status = "Connected" if client_wrapper and client_wrapper.is_connected else "Not Configured or Disconnected"
+    await ws_manager.broadcast_to_user(token, {"type": "system_status", "data": {"mqtt_status": initial_status}})
+
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
-        async with clients_lock:
-            clients.remove(websocket)
-    except:
-        async with clients_lock:
-            clients.remove(websocket)
+        pass
+    finally:
+        await ws_manager.disconnect(websocket, token)
+        if not ws_manager.active_connections.get(token):
+            await mqtt_manager.disconnect_user(token)
 
-# === MQTT 設定 API ===
-@app.post("/api/config-mqtt")
-async def config_mqtt(request: Request, auth=Depends(verify_token)):
-    global mqtt_client, mqtt_connected
+# === MQTT Configuration APIs ===
+@app.get("/api/config-mqtt", tags=["MQTT"])
+async def get_mqtt_config(user_key: str = Depends(verify_user_token)):
+    config = await mqtt_manager.get_config(user_key)
+    if config:
+        return config
+    return {}
+
+@app.post("/api/config-mqtt", tags=["MQTT"])
+async def set_mqtt_config(request: Request, user_key: str = Depends(verify_user_token)):
     config = await request.json()
-
-    topics_by_type = config.get("topics_by_type")
-    if topics_by_type:
-        mqtt_config["topics_by_type"].update(topics_by_type)
-        config.pop("topics_by_type")
-    mqtt_config.update(config)
-
-    if mqtt_client:
-        try:
-            mqtt_client.disconnect()
-            mqtt_client.loop_stop()
-        except:
-            pass
-
-    mqtt_client = mqtt.Client()
-    mqtt_client.on_message = on_mqtt_message
-    if mqtt_config["username"] and mqtt_config["password"]:
-        mqtt_client.username_pw_set(mqtt_config["username"], mqtt_config["password"])
-
     try:
-        mqtt_client.connect(mqtt_config["host"], mqtt_config["port"], 60)
-        mqtt_client.subscribe(mqtt_config["subscribe_topic"])
-        mqtt_client.loop_start()
-        mqtt_connected = True
-        return {"status": "connected", "config": mqtt_config}
+        await mqtt_manager.set_config(user_key, config)
+        client = mqtt_manager.get_client(user_key)
+        if client and client.is_connected:
+            status_message = f"Connected to {config.get('host')}"
+            await ws_manager.broadcast_to_user(user_key, {"type": "system_status", "data": {"mqtt_status": status_message}})
+            return {"status": "success", "message": "MQTT configuration saved and connected."}
+        else:
+            raise Exception("Failed to establish MQTT connection.")
     except Exception as e:
-        mqtt_connected = False
-        return {"status": "error", "detail": str(e)}
+        error_message = f"Error: {str(e)}"
+        await ws_manager.broadcast_to_user(user_key, {"type": "system_status", "data": {"mqtt_status": error_message}})
+        raise HTTPException(status_code=400, detail=error_message)
 
-# === 各事件處理 API ===
-@app.post("/api/arrival")
-@app.post("/api/status")
-@app.post("/api/exception")
-@app.post("/api/control")
-async def handle_event(request: Request, auth=Depends(verify_token)):
-    payload = await request.json()
-    path = request.url.path
-    event_type = path.split("/")[-1]
-    data = {"type": event_type, "data": payload}
-    await broadcast_log(data)
-    return {"status": "ok"}
+# === i18n Language Loading ===
+_i18n_cache = {}
+def get_language_pack(lang: str = Query("en", alias="lang")):
+    valid_langs = {"en", "zh_TW"}
+    lang_code = lang if lang in valid_langs else "en"
+    if lang_code in _i18n_cache:
+        return {"lang_code": lang_code, "i18n": _i18n_cache[lang_code]}
+    lang_file = f"locales/{lang_code}.json"
+    try:
+        with open(lang_file, "r", encoding="utf-8") as f:
+            translations = json.load(f)
+            _i18n_cache[lang_code] = translations
+            return {"lang_code": lang_code, "i18n": translations}
+    except (FileNotFoundError, json.JSONDecodeError):
+        with open("locales/en.json", "r", encoding="utf-8") as f:
+            translations = json.load(f)
+            _i18n_cache["en"] = translations
+            return {"lang_code": "en", "i18n": translations}
 
-@app.get("/", response_class=HTMLResponse)
-async def get_combined_ui():
-    topics_inputs = ""
-    for key, topic in mqtt_config["topics_by_type"].items():
-        topics_inputs += f"<label>{key.capitalize()} Topic:</label><br><input type='text' id='mqttTopic_{key}' value='{topic}'><br><br>\n"
+# === Frontend Pages ===
+@app.get("/", response_class=HTMLResponse, tags=["Frontend"])
+async def get_login_page(request: Request, lang_pack: dict = Depends(get_language_pack)):
+    return templates.TemplateResponse("login.html", {"request": request, **lang_pack})
 
-    return f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset='UTF-8'>
-    <title>📡 即時Log</title>
-    <style>
-        body {{ font-family: sans-serif; background: #f0f0f0; padding: 20px; }}
-        .section {{ margin-bottom: 30px; }}
-        .log {{ background: #fff; border: 1px solid #ddd; padding: 10px; height: 300px; overflow-y: auto; }}
-        .log-entry {{ margin-bottom: 10px; }}
-        .arrival {{ color: green; }}
-        .status {{ color: blue; }}
-        .exception {{ color: red; }}
-        .control {{ color: orange; }}
-        .form-grid {{ display: flex; gap: 40px; }}
-    </style>
-</head>
-<body>
-    <div class='section'>
-        <h1>📄即時Log（發送與接收）</h1>
-        <div class='log' id='log'></div>
-    </div>
+@app.get("/admin", response_class=HTMLResponse, tags=["Frontend"])
+async def get_admin_page(request: Request, lang_pack: dict = Depends(get_language_pack)):
+    return templates.TemplateResponse("admin.html", {"request": request, **lang_pack})
 
-    <div class='section'>
-        <h2>⚙️ MQTT 設定</h2>
-        <form id='mqttForm'>
-            <div class='form-grid'>
-                <div>
-                    <label>Host:</label><br>
-                    <input type='text' id='mqttHost' value='{mqtt_config["host"]}'><br><br>
-                    <label>Port:</label><br>
-                    <input type='number' id='mqttPort' value='{mqtt_config["port"]}'><br><br>
-                    <label>訂閱 Topic:</label><br>
-                    <input type='text' id='mqttSub' value='{mqtt_config["subscribe_topic"]}'><br><br>
-                    <label>發送 Topic(預設):</label><br>
-                    <input type='text' id='mqttPub' value='{mqtt_config["publish_topic"]}'><br><br>
-                    <label>Username:</label><br>
-                    <input type='text' id='mqttUser' value='{mqtt_config["username"]}'><br><br>
-                    <label>Password:</label><br>
-                    <input type='password' id='mqttPass' value='{mqtt_config["password"]}'><br>
-                </div>
-                <div>
-                    {topics_inputs}
-                </div>
-            </div>
-            <br>
-            <button type='submit'>套用</button>
-        </form>
-        <div>連線狀態：<span id='mqttStatus'>尚未設定</span></div>
-    </div>
+@app.get("/log", response_class=HTMLResponse, tags=["Frontend"])
+async def get_log_page(request: Request, lang_pack: dict = Depends(get_language_pack)):
+    return templates.TemplateResponse("log.html", {"request": request, **lang_pack})
 
-    <script>
-        const token = "nuwa8888";
-        const log = document.getElementById('log');
-        const mqttForm = document.getElementById('mqttForm');
-        const mqttStatus = document.getElementById('mqttStatus');
+@app.get("/settings", response_class=HTMLResponse, tags=["Frontend"])
+async def get_settings_page(request: Request, lang_pack: dict = Depends(get_language_pack)):
+    return templates.TemplateResponse("settings.html", {"request": request, **lang_pack})
 
-        const ws = new WebSocket("ws://" + location.host + "/ws?token=" + token);
-
-        ws.onmessage = (event) => {{
-            const message = JSON.parse(event.data);
-            const entry = document.createElement("div");
-            entry.classList.add("log-entry");
-            entry.classList.add(message.type);
-
-            let logTime = new Date().toLocaleString();
-            if (message.data && message.data.timestamp) {{
-                try {{
-                    const ts = parseInt(message.data.timestamp);
-                    if (!isNaN(ts)) {{
-                        logTime = new Date(ts * 1000).toLocaleString();
-                    }}
-                }} catch (e) {{
-                    console.warn("timestamp parse error", e);
-                }}
-            }}
-
-            entry.innerHTML = `[${{logTime}}] [${{message.type.toUpperCase()}}] <pre>${{JSON.stringify(message.data, null, 2)}}</pre>`;
-            log.appendChild(entry);
-            log.scrollTop = log.scrollHeight;
-        }};
-
-        ws.onerror = (e) => {{
-            console.error("WebSocket error:", e);
-            mqttStatus.textContent = "❌ WebSocket 連線錯誤";
-        }};
-
-        ws.onclose = (e) => {{
-            console.warn("WebSocket closed:", e);
-            mqttStatus.textContent = "❌ WebSocket 已斷線";
-        }};
-
-        mqttForm.onsubmit = async (e) => {{
-            e.preventDefault();
-            const topics_by_type = {{
-                arrival: document.getElementById("mqttTopic_arrival").value,
-                status: document.getElementById("mqttTopic_status").value,
-                exception: document.getElementById("mqttTopic_exception").value,
-                control: document.getElementById("mqttTopic_control").value
-            }};
-            const body = {{
-                host: document.getElementById("mqttHost").value,
-                port: parseInt(document.getElementById("mqttPort").value),
-                subscribe_topic: document.getElementById("mqttSub").value,
-                publish_topic: document.getElementById("mqttPub").value,
-                username: document.getElementById("mqttUser").value,
-                password: document.getElementById("mqttPass").value,
-                topics_by_type: topics_by_type
-            }};
-            const res = await fetch("/api/config-mqtt", {{
-                method: "POST",
-                headers: {{
-                    "Content-Type": "application/json",
-                    "Authorization": "Bearer " + token
-                }},
-                body: JSON.stringify(body)
-            }});
-            const result = await res.json();
-            mqttStatus.textContent = result.status === "connected" ? "✅ 連線成功" : "❌ 錯誤: " + result.detail;
-        }};
-    </script>
-</body>
-</html>
-"""
-# === 健康檢查 ===
-@app.get("/health")
+@app.get("/health", tags=["Health"])
 def health_check():
-    return {"status": "OK", "message": "伺服器正常運作中"}
-
-# === Markdown 產生文件 ===
-@app.get("/api-docs.md", response_class=HTMLResponse)
-async def get_markdown_docs():
-    schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
-    md = [f"# {schema['info']['title']} API", f"版本: {schema['info']['version']}", ""]
-    for path, methods in schema["paths"].items():
-        for method, info in methods.items():
-            md.append(f"## `{method.upper()}` {path}\n{info.get('summary', '')}\n")
-            if "requestBody" in info:
-                content = info["requestBody"]["content"].get("application/json", {})
-                schema_ = content.get("schema", {})
-                md.append("### Request Body:")
-                md.append("```json\n" + str(schema_) + "\n```")
-    return "\n".join(md)
+    return {"status": "OK"}

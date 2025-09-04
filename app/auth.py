@@ -17,6 +17,7 @@ class KeyManager:
         self.user_keys: Set[str] = set()
 
         if not self.master_key:
+
             # The entrypoint script should prevent this from being empty,
             # but we log a warning just in case.
             logger.warning("MASTER_KEY environment variable is empty. Admin functions will be disabled.")
@@ -35,6 +36,9 @@ class KeyManager:
                 raise
 
     def reload_keys(self) -> bool:
+        logger.info(f"Reloading user keys from {self.keys_file}...")
+        try:
+            with open(self.keys_file, "r") as f:
         """
         Reads the key file and reloads the set of user keys.
         Returns True if successful, False otherwise.
@@ -52,24 +56,20 @@ class KeyManager:
             return False
 
     def get_all_user_keys(self) -> list[str]:
-        """Returns a list of all current user keys."""
         return sorted(list(self.user_keys))
 
     def is_valid_user_key(self, key: str) -> bool:
-        """Checks if a given key is in the set of valid user keys."""
         return key in self.user_keys
 
     def is_valid_master_key(self, key: str) -> bool:
-        """Checks if a given key matches the master key."""
         if not self.master_key:
-            return False # No master key is set, so no key can be valid.
+            return False
         return key == self.master_key
 
     def add_key(self, new_key: str) -> bool:
-        """Adds a new key to the keys file and reloads."""
         if new_key in self.user_keys:
             logger.warning(f"Attempted to add a key that already exists: {new_key}")
-            return True # Idempotent, so we can return success
+            return True
         try:
             with open(self.keys_file, "a") as f:
                 f.write(f"{new_key}\n")
@@ -80,12 +80,15 @@ class KeyManager:
             return False
 
     def revoke_key(self, key_to_revoke: str) -> bool:
+
         """Removes a key from the keys file and reloads."""
         if key_to_revoke not in self.user_keys:
             logger.warning(f"Attempted to revoke a key that does not exist: {key_to_revoke}")
             return False
 
+
         # Read all keys except the one to revoke
+
         try:
             with open(self.keys_file, "r") as f:
                 current_keys = {line.strip() for line in f if line.strip()}
@@ -101,6 +104,7 @@ class KeyManager:
         except IOError as e:
             logger.error(f"Failed to update key file {self.keys_file} during revocation: {e}")
             return False
+
 
 
 # Create a single, global instance of the KeyManager, using a path relative to the app's CWD

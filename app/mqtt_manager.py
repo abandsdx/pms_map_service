@@ -99,6 +99,13 @@ class ConnectionManager:
             self.configs[user_key] = config
         await self._save_configs()
 
+        await self.disconnect_user(user_key)
+        await self.ensure_connection(user_key)
+
+    async def ensure_connection(self, user_key: str):
+        async with self.lock:
+            if user_key in self.clients and self.clients[user_key].is_connected:
+                return
         # Disconnect any existing client for this user
         await self.disconnect_user(user_key)
 
@@ -119,6 +126,9 @@ class ConnectionManager:
                     client_wrapper.connect()
                     self.clients[user_key] = client_wrapper
                 except Exception:
+                    pass
+
+    async def disconnect_user(self, user_key: str):
                     pass # Error is logged in connect()
 
     async def disconnect_user(self, user_key: str):

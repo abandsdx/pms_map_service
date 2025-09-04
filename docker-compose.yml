@@ -9,6 +9,7 @@ services:
       - API_TOKEN=${API_TOKEN} # This is currently unused but kept for potential future use
     volumes:
       - ./outputs:/app/outputs
-      # Mount the api_keys.txt file to persist user keys across container restarts.
+      # Mount the key and config files to persist them across container restarts.
       - ./api_keys.txt:/app/api_keys.txt
+      - ./mqtt_configs.json:/app/mqtt_configs.json
     restart: unless-stopped

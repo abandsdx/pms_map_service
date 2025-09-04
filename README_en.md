@@ -35,7 +35,8 @@ docker-compose up -d --build
 The service will start at `http://localhost:8000`.
 
 ### Alternative: First-Time Auto-Generation
-If you start the service without a `.env` file, it will generate a Master Key and print it to the console. Copy this key into a new `.env` file for future use.
+
+If you start the service by running `docker-compose up` *without* creating a `.env` file, the application will automatically generate a Master Key for you and print it to the console logs. You can then copy this key and place it in your `.env` file as described in step 1 for future deployments.
 
 ## Usage Workflow
 
