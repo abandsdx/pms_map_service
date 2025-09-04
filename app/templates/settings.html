@@ -74,9 +74,13 @@
             const settingsUrl = `/settings?lang=${savedLang}`;
             const adminUrl = `/admin?lang=${savedLang}`;
 
-            let navLinks = `<a href="${logUrl}">${i18n.nav_log_viewer | default('Log Viewer')}</a><a href="${settingsUrl}" class="active">${i18n.nav_mqtt_settings | default('MQTT Settings')}</a>`;
+            const navLogViewer = i18n.nav_log_viewer || 'Log Viewer';
+            const navMqttSettings = i18n.nav_mqtt_settings || 'MQTT Settings';
+            const navAdmin = i18n.nav_admin || 'Admin';
+
+            let navLinks = `<a href="${logUrl}">${navLogViewer}</a><a href="${settingsUrl}" class="active">${navMqttSettings}</a>`;
             if (role === 'admin') {
-                navLinks += `<a href="${adminUrl}">${i18n.nav_admin | default('Admin')}</a>`;
+                navLinks += `<a href="${adminUrl}">${navAdmin}</a>`;
             }
 
             const langSwitcher = `
