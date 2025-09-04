@@ -4,7 +4,12 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - API_TOKEN=${API_TOKEN}
+      # The MASTER_KEY should be set in a .env file. See README.md for details.
+      - MASTER_KEY=${MASTER_KEY}
+      - API_TOKEN=${API_TOKEN} # This is currently unused but kept for potential future use
     volumes:
       - ./outputs:/app/outputs
+      # Mount the key and config files to persist them across container restarts.
+      - ./api_keys.txt:/app/api_keys.txt
+      - ./mqtt_configs.json:/app/mqtt_configs.json
     restart: unless-stopped

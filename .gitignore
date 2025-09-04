@@ -1,0 +1,15 @@
+# Ignore generated map data and other transient outputs
+outputs/
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore environment file
+.env
+
+# Ignore persisted data files
+api_keys.txt
+mqtt_configs.json

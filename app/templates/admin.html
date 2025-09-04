@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="{{ lang_code | default('en') }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ i18n.admin_panel_title | default('Key Management') }}</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background-color: #f4f4f9; color: #333; }
+        .container { max-width: 800px; margin: 1em auto; background: #fff; padding: 2em; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1, h2 { color: #5a5a5a; border-bottom: 1px solid #eee; padding-bottom: 0.5em;}
+        nav { background: #333; padding: 1em; text-align: center; display: flex; justify-content: center; align-items: center; }
+        nav a { color: white; text-decoration: none; margin: 0 1em; font-size: 1.1em; }
+        nav a.active { font-weight: bold; text-decoration: underline; }
+        .lang-switcher { margin-left: auto; }
+        .lang-switcher select { background-color: #555; color: white; border: 1px solid #666; padding: 5px; border-radius: 4px; }
+        .hidden { display: none; }
+        button { padding: 10px 15px; border: none; background-color: #007bff; color: white; border-radius: 4px; cursor: pointer; font-size: 1em; margin-right: 10px; }
+        button:hover { background-color: #0056b3; }
+        #key-list { list-style-type: none; padding: 0; }
+        #key-list li { font-family: monospace; background: #eee; padding: 10px; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; border-radius: 4px; }
+        .revoke-btn, #logout-btn { background-color: #dc3545; }
+        .revoke-btn:hover, #logout-btn:hover { background-color: #c82333; }
+        #new-key-display { background: #d4edda; color: #155724; padding: 1em; margin-top: 1em; border-radius: 4px; word-wrap: break-word; font-family: monospace; }
+        #error-message { color: #dc3545; margin-top: 1em; }
+    </style>
+</head>
+<body>
+    <nav id="nav-bar"></nav>
+    <div class="container" id="management-view">
+        <h1>{{ i18n.admin_panel_title | default('Key Management Panel') }}</h1>
+        <button id="generate-btn">{{ i18n.admin_generate_button | default('Generate New Key') }}</button>
+        <button id="logout-btn">{{ i18n.admin_logout_button | default('Logout') }}</button>
+        <div id="new-key-display" class="hidden"></div>
+        <p id="error-message" class="hidden"></p>
+        <h2>{{ i18n.admin_existing_keys_title | default('Existing Keys') }}</h2>
+        <ul id="key-list"></ul>
+    </div>
+
+    <script>
+        const i18n = {{ i18n | tojson }};
+        const langCode = '{{ lang_code | default('en') }}';
+
+        const managementView = document.getElementById('management-view');
+        const logoutBtn = document.getElementById('logout-btn');
+        const generateBtn = document.getElementById('generate-btn');
+        const newKeyDisplay = document.getElementById('new-key-display');
+        const keyList = document.getElementById('key-list');
+        const errorMessage = document.getElementById('error-message');
+        const navBar = document.getElementById('nav-bar');
+
+        let masterKey = '';
+
+        function renderNavbar(role) {
+            const savedLang = localStorage.getItem('lang') || langCode;
+            const logUrl = `/log?lang=${savedLang}`;
+            const settingsUrl = `/settings?lang=${savedLang}`;
+            const adminUrl = `/admin?lang=${savedLang}`;
+
+            let navLinks = `<a href="${logUrl}">${i18n.nav_log_viewer | default('Log Viewer')}</a><a href="${settingsUrl}">${i18n.nav_mqtt_settings | default('MQTT Settings')}</a>`;
+            if (role === 'admin') {
+                navLinks += `<a href="${adminUrl}" class="active">${i18n.nav_admin | default('Admin')}</a>`;
+            }
+
+            const langSwitcher = `
+                <div class="lang-switcher">
+                    <select id="lang-select">
+                        <option value="en" ${savedLang === 'en' ? 'selected' : ''}>English</option>
+                        <option value="zh_TW" ${savedLang === 'zh_TW' ? 'selected' : ''}>繁體中文</option>
+                    </select>
+                </div>`;
+            navBar.innerHTML = navLinks + langSwitcher;
+
+            document.getElementById('lang-select').addEventListener('change', (event) => {
+                const newLang = event.target.value;
+                localStorage.setItem('lang', newLang);
+                window.location.href = `/admin?lang=${newLang}`;
+            });
+        }
+
+        async function apiCall(endpoint, method = 'GET', body = null) {
+            errorMessage.classList.add('hidden');
+            const headers = { 'Authorization': `Bearer ${masterKey}` };
+            const options = { method, headers };
+            if (body) {
+                headers['Content-Type'] = 'application/json';
+                options.body = JSON.stringify(body);
+            }
+            try {
+                const response = await fetch(endpoint, options);
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({ detail: `HTTP error! Status: ${response.status}` }));
+                    throw new Error(error.detail);
+                }
+                return response.status === 204 ? {} : await response.json();
+            } catch (error) {
+                errorMessage.textContent = (i18n.api_error || 'API Error: {message}').replace('{message}', error.message);
+                errorMessage.classList.remove('hidden');
+                if (error.message.toLowerCase().includes('unauthorized') || error.message.toLowerCase().includes('invalid')) {
+                    sessionStorage.clear();
+                    window.location.href = `/?lang=${localStorage.getItem('lang') || langCode}`;
+                }
+                return null;
+            }
+        }
+
+        async function loadKeys() {
+            const data = await apiCall('/api/admin/keys');
+            if (data && data.user_keys) {
+                keyList.innerHTML = '';
+                data.user_keys.forEach(key => {
+                    const li = document.createElement('li');
+                    li.textContent = key;
+                    const revokeBtn = document.createElement('button');
+                    revokeBtn.textContent = i18n.admin_revoke_button | default('Revoke');
+                    revokeBtn.className = 'revoke-btn';
+                    revokeBtn.onclick = () => revokeKey(key);
+                    li.appendChild(revokeBtn);
+                    keyList.appendChild(li);
+                });
+            }
+        }
+
+        async function generateKey() {
+            newKeyDisplay.classList.add('hidden');
+            const data = await apiCall('/api/admin/generate-key', 'POST');
+            if (data && data.new_key) {
+                newKeyDisplay.textContent = (i18n.admin_new_key_success || 'Success! New key: {key}').replace('{key}', data.new_key);
+                newKeyDisplay.classList.remove('hidden');
+                await loadKeys();
+            }
+        }
+
+        async function revokeKey(key) {
+            const confirmMsg = (i18n.admin_confirm_revoke || 'Are you sure you want to revoke key {key}? This action cannot be undone.').replace('{key}', key);
+            if (!confirm(confirmMsg)) return;
+            const data = await apiCall('/api/admin/revoke-key', 'POST', { key_to_revoke: key });
+            if (data) {
+                await loadKeys();
+            }
+        }
+
+        logoutBtn.addEventListener('click', () => {
+            sessionStorage.clear();
+            window.location.href = `/?lang=${localStorage.getItem('lang') || langCode}`;
+        });
+
+        generateBtn.addEventListener('click', generateKey);
+
+        function init() {
+            const savedLang = localStorage.getItem('lang');
+            if (savedLang && savedLang !== langCode) {
+                window.location.href = `/admin?lang=${savedLang}`;
+                return;
+            }
+
+            masterKey = sessionStorage.getItem('masterKey');
+            const role = sessionStorage.getItem('apiRole');
+
+            if (!masterKey || role !== 'admin') {
+                alert('Access denied. Please login as an administrator.');
+                window.location.href = `/?lang=${savedLang || langCode}`;
+                return;
+            }
+
+            renderNavbar(role);
+            loadKeys();
+        }
+
+        init();
+    </script>
+</body>
+</html>

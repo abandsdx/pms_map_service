@@ -3,3 +3,5 @@ uvicorn[standard]
 paho-mqtt
 PyYAML
 requests
+jinja2
+pydantic
