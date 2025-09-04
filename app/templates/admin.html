@@ -111,7 +111,7 @@
                     const li = document.createElement('li');
                     li.textContent = key;
                     const revokeBtn = document.createElement('button');
-                    revokeBtn.textContent = i18n.admin_revoke_button | default('Revoke');
+                    revokeBtn.textContent = i18n.admin_revoke_button || 'Revoke';
                     revokeBtn.className = 'revoke-btn';
                     revokeBtn.onclick = () => revokeKey(key);
                     li.appendChild(revokeBtn);
