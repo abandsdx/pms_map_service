@@ -120,48 +120,69 @@ async def revoke_user_key(request: RevokeKeyRequest):
     raise HTTPException(status_code=404, detail="Key not found or failed to revoke key.")
 
 # === Incoming Data Endpoints ===
-async def broadcast_to_all(data: dict):
-    """Helper function to broadcast a message to all connected WebSocket clients."""
-    all_user_keys = list(ws_manager.active_connections.keys())
-    for user_key in all_user_keys:
-        await ws_manager.broadcast_to_user(user_key, data)
+class IngestData(BaseModel):
+    type: str
+    data: dict
 
-@app.post("/api/status", tags=["Incoming Data"])
-async def post_status(request: Request):
-    """Endpoint to receive status updates and broadcast them to clients."""
+def get_ingest_key(x_api_key: str = Header(..., alias="X-API-Key")):
+    """Dependency to validate and return the user key from the X-API-Key header."""
+    if not key_manager.is_valid_user_key(x_api_key):
+        raise HTTPException(status_code=403, detail="Invalid X-API-Key.")
+    return x_api_key
+
+@app.post("/api/ingest", tags=["Incoming Data"])
+async def post_ingest(payload: IngestData, user_key: str = Depends(get_ingest_key)):
+    """
+    A unified endpoint to receive any type of log data.
+    The user key is passed via the X-API-Key header for better security.
+    """
+    await ws_manager.broadcast_to_user(user_key, {"type": payload.type, "data": payload.data})
+    return {"status": "received"}
+
+@app.post("/api/{user_key}/status", tags=["Incoming Data"])
+async def post_status(user_key: str, request: Request):
+    """Endpoint to receive status updates and broadcast them to a specific user."""
+    if not key_manager.is_valid_user_key(user_key):
+        raise HTTPException(status_code=403, detail="Invalid user key.")
     try:
         data = await request.json()
-        await broadcast_to_all({"type": "status", "data": data})
+        await ws_manager.broadcast_to_user(user_key, {"type": "status", "data": data})
         return {"status": "received"}
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON payload.")
 
-@app.post("/api/arrival", tags=["Incoming Data"])
-async def post_arrival(request: Request):
-    """Endpoint to receive arrival data and broadcast it to clients."""
+@app.post("/api/{user_key}/arrival", tags=["Incoming Data"])
+async def post_arrival(user_key: str, request: Request):
+    """Endpoint to receive arrival data and broadcast it to a specific user."""
+    if not key_manager.is_valid_user_key(user_key):
+        raise HTTPException(status_code=403, detail="Invalid user key.")
     try:
         data = await request.json()
-        await broadcast_to_all({"type": "arrival", "data": data})
+        await ws_manager.broadcast_to_user(user_key, {"type": "arrival", "data": data})
         return {"status": "received"}
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON payload.")
 
-@app.post("/api/exception", tags=["Incoming Data"])
-async def post_exception(request: Request):
-    """Endpoint to receive exception data and broadcast it to clients."""
+@app.post("/api/{user_key}/exception", tags=["Incoming Data"])
+async def post_exception(user_key: str, request: Request):
+    """Endpoint to receive exception data and broadcast it to a specific user."""
+    if not key_manager.is_valid_user_key(user_key):
+        raise HTTPException(status_code=403, detail="Invalid user key.")
     try:
         data = await request.json()
-        await broadcast_to_all({"type": "exception", "data": data})
+        await ws_manager.broadcast_to_user(user_key, {"type": "exception", "data": data})
         return {"status": "received"}
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON payload.")
 
-@app.post("/api/control", tags=["Incoming Data"])
-async def post_control(request: Request):
-    """Endpoint to receive control data and broadcast it to clients."""
+@app.post("/api/{user_key}/control", tags=["Incoming Data"])
+async def post_control(user_key: str, request: Request):
+    """Endpoint to receive control data and broadcast it to a specific user."""
+    if not key_manager.is_valid_user_key(user_key):
+        raise HTTPException(status_code=403, detail="Invalid user key.")
     try:
         data = await request.json()
-        await broadcast_to_all({"type": "control", "data": data})
+        await ws_manager.broadcast_to_user(user_key, {"type": "control", "data": data})
         return {"status": "received"}
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON payload.")
