@@ -19,6 +19,7 @@
         #response-message { margin-top: 1em; padding: 10px; border-radius: 4px; display: none; }
         .success { background-color: #d4edda; color: #155724; display: block !important; }
         .error { background-color: #f8d7da; color: #721c24; display: block !important; }
+        /* ... styles ... */
     </style>
 </head>
 <body>
@@ -46,6 +47,7 @@
                         <input type="text" id="mqttSub"><br>
                         <label for="mqttPub">{{ i18n.settings_pub_label | default('Default Publish Topic:') }}</label><br>
                         <input type="text" id="mqttPub"><br>
+                        <!-- This part is tricky to default, but the JS populates it anyway -->
                         <label for="mqttTopic_arrival">Arrival Publish Topic:</label><br>
                         <input type="text" id="mqttTopic_arrival"><br>
                         <label for="mqttTopic_status">Status Publish Topic:</label><br>
@@ -187,7 +189,7 @@
             initializePage(userApiKey);
         }
 
-        init();
+        // ... (rest of script)
     </script>
 </body>
 </html>

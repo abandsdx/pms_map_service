@@ -3,9 +3,11 @@ import logging
 from pathlib import Path
 from typing import Set
 
+# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Define the path for the API keys file, relative to the app's root
 KEYS_FILE_PATH = Path("api_keys.txt")
 
 class KeyManager:
@@ -15,12 +17,16 @@ class KeyManager:
         self.user_keys: Set[str] = set()
 
         if not self.master_key:
+
+            # The entrypoint script should prevent this from being empty,
+            # but we log a warning just in case.
             logger.warning("MASTER_KEY environment variable is empty. Admin functions will be disabled.")
 
         self._ensure_keys_file_exists()
         self.reload_keys()
 
     def _ensure_keys_file_exists(self):
+        """Ensures the key file exists."""
         if not self.keys_file.exists():
             logger.info(f"Key file not found at {self.keys_file}. Creating an empty file.")
             try:
@@ -33,6 +39,14 @@ class KeyManager:
         logger.info(f"Reloading user keys from {self.keys_file}...")
         try:
             with open(self.keys_file, "r") as f:
+        """
+        Reads the key file and reloads the set of user keys.
+        Returns True if successful, False otherwise.
+        """
+        logger.info(f"Reloading user keys from {self.keys_file}...")
+        try:
+            with open(self.keys_file, "r") as f:
+                # Read lines, strip whitespace, and filter out empty lines
                 keys = {line.strip() for line in f if line.strip()}
             self.user_keys = keys
             logger.info(f"Successfully loaded {len(self.user_keys)} user keys.")
@@ -66,9 +80,14 @@ class KeyManager:
             return False
 
     def revoke_key(self, key_to_revoke: str) -> bool:
+
+        """Removes a key from the keys file and reloads."""
         if key_to_revoke not in self.user_keys:
             logger.warning(f"Attempted to revoke a key that does not exist: {key_to_revoke}")
             return False
+
+
+        # Read all keys except the one to revoke
 
         try:
             with open(self.keys_file, "r") as f:
@@ -86,4 +105,8 @@ class KeyManager:
             logger.error(f"Failed to update key file {self.keys_file} during revocation: {e}")
             return False
 
+
+
+# Create a single, global instance of the KeyManager, using a path relative to the app's CWD
+# In Docker, this will be /app/api_keys.txt
 key_manager = KeyManager(KEYS_FILE_PATH)
