@@ -10,8 +10,10 @@
         nav { background: #333; padding: 1em; text-align: center; display: flex; justify-content: center; align-items: center; }
         nav a { color: white; text-decoration: none; margin: 0 1em; font-size: 1.1em; }
         nav a.active { font-weight: bold; text-decoration: underline; }
-        .lang-switcher { margin-left: auto; }
-        .lang-switcher select { background-color: #555; color: white; border: 1px solid #666; padding: 5px; border-radius: 4px; }
+        .nav-actions { display: flex; align-items: center; margin-left: auto; }
+        .lang-switcher select { background-color: #555; color: white; border: 1px solid #666; padding: 5px; border-radius: 4px; margin-right: 15px; }
+        #nav-logout-btn { background-color: #6c757d; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-size: 1em; }
+        #nav-logout-btn:hover { background-color: #5a6268; }
         .status-bar { padding: 10px; margin-bottom: 1em; border-radius: 4px; text-align: center; }
         .status-bar span { font-weight: bold; }
         .status-connected { background-color: #d4edda; color: #155724; }
@@ -43,7 +45,12 @@
         const statusBar = document.getElementById('status-bar');
         const navBar = document.getElementById('nav-bar');
 
-        function renderNavbar(role) {
+        function handleLogout() {
+            sessionStorage.clear();
+            window.location.href = `/?lang=${localStorage.getItem('lang') || langCode}`;
+        }
+
+        function renderNavbar(role, currentPage) {
             const savedLang = localStorage.getItem('lang') || langCode;
             const logUrl = `/log?lang=${savedLang}`;
             const settingsUrl = `/settings?lang=${savedLang}`;
@@ -52,26 +59,39 @@
             const navLogViewer = i18n.nav_log_viewer || 'Log Viewer';
             const navMqttSettings = i18n.nav_mqtt_settings || 'MQTT Settings';
             const navAdmin = i18n.nav_admin || 'Admin';
+            const navLogout = i18n.admin_logout_button || 'Logout';
 
-            let navLinks = `<a href="${logUrl}" class="active">${navLogViewer}</a><a href="${settingsUrl}">${navMqttSettings}</a>`;
+            let navLinks = '';
             if (role === 'admin') {
+                // Admin sees all links when not on the admin page
+                navLinks += `<a href="${logUrl}" ${currentPage === 'log' ? 'class="active"' : ''}>${navLogViewer}</a>`;
+                navLinks += `<a href="${settingsUrl}" ${currentPage === 'settings' ? 'class="active"' : ''}>${navMqttSettings}</a>`;
                 navLinks += `<a href="${adminUrl}">${navAdmin}</a>`;
+            } else {
+                // User only sees log and settings
+                navLinks += `<a href="${logUrl}" ${currentPage === 'log' ? 'class="active"' : ''}>${navLogViewer}</a>`;
+                navLinks += `<a href="${settingsUrl}" ${currentPage === 'settings' ? 'class="active"' : ''}>${navMqttSettings}</a>`;
             }
 
-            const langSwitcher = `
-                <div class="lang-switcher">
-                    <select id="lang-select">
-                        <option value="en" ${savedLang === 'en' ? 'selected' : ''}>English</option>
-                        <option value="zh_TW" ${savedLang === 'zh_TW' ? 'selected' : ''}>繁體中文</option>
-                    </select>
+            const navActions = `
+                <div class="nav-actions">
+                    <div class="lang-switcher">
+                        <select id="lang-select">
+                            <option value="en" ${savedLang === 'en' ? 'selected' : ''}>English</option>
+                            <option value="zh_TW" ${savedLang === 'zh_TW' ? 'selected' : ''}>繁體中文</option>
+                        </select>
+                    </div>
+                    <button id="nav-logout-btn">${navLogout}</button>
                 </div>`;
-            navBar.innerHTML = navLinks + langSwitcher;
+
+            navBar.innerHTML = navLinks + navActions;
 
             document.getElementById('lang-select').addEventListener('change', (event) => {
                 const newLang = event.target.value;
                 localStorage.setItem('lang', newLang);
-                window.location.href = `/log?lang=${newLang}`;
+                window.location.href = `/${currentPage}?lang=${newLang}`;
             });
+            document.getElementById('nav-logout-btn').addEventListener('click', handleLogout);
         }
 
         function connectWebSocket(token) {
@@ -134,12 +154,14 @@
             const role = sessionStorage.getItem('apiRole');
 
             if (!userApiKey) {
+                // An admin might be viewing this page, but they MUST have impersonated a user.
+                // A user must have their own key.
                 alert('Access denied. Please login first.');
                 window.location.href = `/?lang=${savedLang || langCode}`;
                 return;
             }
 
-            renderNavbar(role);
+            renderNavbar(role, 'log');
             connectWebSocket(userApiKey);
         }
 
