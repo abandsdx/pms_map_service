@@ -17,7 +17,11 @@
         button { padding: 10px 15px; border: none; background-color: #007bff; color: white; border-radius: 4px; cursor: pointer; font-size: 1em; margin-right: 10px; }
         button:hover { background-color: #0056b3; }
         #key-list { list-style-type: none; padding: 0; }
-        #key-list li { font-family: monospace; background: #eee; padding: 10px; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; border-radius: 4px; }
+        #key-list li { font-family: monospace; background: #eee; padding: 10px; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; border-radius: 4px; flex-wrap: wrap; }
+        .key-text { flex-grow: 1; word-break: break-all; margin-right: 20px;}
+        .key-actions { display: flex; flex-shrink: 0; }
+        .view-btn { background-color: #17a2b8; }
+        .view-btn:hover { background-color: #138496; }
         .revoke-btn, #logout-btn { background-color: #dc3545; }
         .revoke-btn:hover, #logout-btn:hover { background-color: #c82333; }
         #new-key-display { background: #d4edda; color: #155724; padding: 1em; margin-top: 1em; border-radius: 4px; word-wrap: break-word; font-family: monospace; }
@@ -107,18 +111,50 @@
             }
         }
 
+        function viewLogs(userKey) {
+            sessionStorage.setItem('userApiKey', userKey);
+            window.location.href = `/log?lang=${localStorage.getItem('lang') || langCode}`;
+        }
+
+        function viewSettings(userKey) {
+            sessionStorage.setItem('userApiKey', userKey);
+            window.location.href = `/settings?lang=${localStorage.getItem('lang') || langCode}`;
+        }
+
         async function loadKeys() {
             const data = await apiCall('/api/admin/keys');
             if (data && data.user_keys) {
                 keyList.innerHTML = '';
                 data.user_keys.forEach(key => {
                     const li = document.createElement('li');
-                    li.textContent = key;
+
+                    const keyText = document.createElement('span');
+                    keyText.className = 'key-text';
+                    keyText.textContent = key;
+                    li.appendChild(keyText);
+
+                    const actionsDiv = document.createElement('div');
+                    actionsDiv.className = 'key-actions';
+
+                    const logsBtn = document.createElement('button');
+                    logsBtn.textContent = i18n.admin_view_logs_button || 'View Logs';
+                    logsBtn.className = 'view-btn';
+                    logsBtn.onclick = () => viewLogs(key);
+                    actionsDiv.appendChild(logsBtn);
+
+                    const settingsBtn = document.createElement('button');
+                    settingsBtn.textContent = i18n.admin_view_settings_button || 'View Settings';
+                    settingsBtn.className = 'view-btn';
+                    settingsBtn.onclick = () => viewSettings(key);
+                    actionsDiv.appendChild(settingsBtn);
+
                     const revokeBtn = document.createElement('button');
                     revokeBtn.textContent = i18n.admin_revoke_button || 'Revoke';
                     revokeBtn.className = 'revoke-btn';
                     revokeBtn.onclick = () => revokeKey(key);
-                    li.appendChild(revokeBtn);
+                    actionsDiv.appendChild(revokeBtn);
+
+                    li.appendChild(actionsDiv);
                     keyList.appendChild(li);
                 });
             }
@@ -165,6 +201,9 @@
                 window.location.href = `/?lang=${savedLang || langCode}`;
                 return;
             }
+
+            // When admin returns to this page, clear any impersonated user key.
+            sessionStorage.removeItem('userApiKey');
 
             renderNavbar(role);
             loadKeys();
