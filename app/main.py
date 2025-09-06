@@ -76,6 +76,14 @@ def get_token_from_header(authorization: str = Header(..., alias="Authorization"
         raise HTTPException(status_code=401, detail="Invalid token format. Must be 'Bearer <token>'.")
     return authorization.replace("Bearer ", "")
 
+def verify_basic_user_token(authorization: str = Header(..., alias="Authorization")):
+    if not authorization.startswith("Basic "):
+        raise HTTPException(status_code=401, detail="Invalid auth format. Must be 'Basic <token>'.")
+    token = authorization.replace("Basic ", "")
+    if not key_manager.is_valid_user_key(token):
+        raise HTTPException(status_code=403, detail="Unauthorized: Invalid user key.")
+    return token
+
 def verify_user_token(token: str = Depends(get_token_from_header)):
     if not key_manager.is_valid_user_key(token):
         raise HTTPException(status_code=403, detail="Unauthorized: Invalid or expired user key.")
@@ -180,17 +188,18 @@ async def post_control(request: Request, user_key: str = Depends(get_ingest_key)
         raise HTTPException(status_code=400, detail="Invalid JSON payload.")
 
 # === Map Download APIs ===
-@app.get("/api/field-map", tags=["Maps"])
-async def get_field_map(user_key: str = Depends(verify_user_token)):
+@app.get("/field-map", tags=["Maps"])
+async def get_field_map(user_key: str = Depends(verify_basic_user_token)):
     """
     Serves the map data JSON file generated for a specific user.
-    The user is identified by their API key.
+    The user is identified by their API key via Basic Auth.
     """
     # The RMS token is not directly the user_key, but for the purpose of finding the
     # generated file, we assume the key used for the websocket/API is the one
     # whose hash is in the filename. This relies on the user triggering the refresh
     # with a key they also use to log in. A more robust system might link
     # RMS tokens to user accounts.
+    # NOTE: The user key here is the one from the `Authorization: Basic <key>` header.
     token_hash = get_token_hash(user_key)
     json_file_path = os.path.join(OUTPUT_DIR, f"field_map_r_locations_{token_hash}.json")
 
