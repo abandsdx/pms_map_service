@@ -42,5 +42,24 @@
     "login_prompt": "Please enter your API Key to proceed.",
     "api_key_placeholder": "API Key",
     "login_button": "Login",
-    "alert_key_required": "API Key cannot be empty."
+    "alert_key_required": "API Key cannot be empty.",
+    "status_codes": {
+        "ST-M1001": "Task application received",
+        "ST-M1002": "New dispatch task created",
+        "ST-M1003": "Arrived at pickup point",
+        "ST-M1004": "Delivery point reached",
+        "ST-M1005": "Extra completion condition met",
+        "ST-M1006": "Task finished",
+        "ST-M1007": "Task finished (user return)",
+        "ST-M1008": "Task finished, returning",
+        "ST-M1009": "Point arrival notification",
+        "ST-M1010": "Task finished, returned to standby",
+        "ST-N1001": "Notifying resident",
+        "ST-N1002": "Waiting for resident",
+        "ST-N1003": "Resident retrieving item",
+        "ST-EL1001": "[Elevator] Entered elevator from a floor",
+        "ST-EL1002": "[Elevator] Exited elevator to a floor",
+        "ST-VM1001": "[Vending] Arrived at vending machine",
+        "ST-VM1002": "[Vending] Item retrieval complete"
+    }
 }
