@@ -119,7 +119,17 @@
                 const entry = document.createElement("div");
                 entry.classList.add("log-entry");
                 let logTime = message._log_prefix || new Date().toLocaleString();
-                entry.innerHTML = `${logTime} [${message.type.toUpperCase()}] <pre>${JSON.stringify(message.data, null, 2)}</pre>`;
+
+                let statusText = '';
+                if (message.type === 'status' && message.data && message.data.status && i18n.status_codes) {
+                    const statusCode = message.data.status;
+                    const mappedText = i18n.status_codes[statusCode];
+                    if (mappedText) {
+                        statusText = ` <strong>${mappedText}</strong> (${statusCode})<br>`;
+                    }
+                }
+
+                entry.innerHTML = `${logTime} [${message.type.toUpperCase()}]${statusText} <pre>${JSON.stringify(message.data, null, 2)}</pre>`;
                 log.appendChild(entry);
                 log.scrollTop = log.scrollHeight;
             };
