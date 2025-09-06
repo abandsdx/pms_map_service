@@ -180,6 +180,31 @@ async def post_control(request: Request, user_key: str = Depends(get_ingest_key)
         raise HTTPException(status_code=400, detail="Invalid JSON payload.")
 
 # === Map Download APIs ===
+@app.get("/api/field-map", tags=["Maps"])
+async def get_field_map(user_key: str = Depends(verify_user_token)):
+    """
+    Serves the map data JSON file generated for a specific user.
+    The user is identified by their API key.
+    """
+    # The RMS token is not directly the user_key, but for the purpose of finding the
+    # generated file, we assume the key used for the websocket/API is the one
+    # whose hash is in the filename. This relies on the user triggering the refresh
+    # with a key they also use to log in. A more robust system might link
+    # RMS tokens to user accounts.
+    token_hash = get_token_hash(user_key)
+    json_file_path = os.path.join(OUTPUT_DIR, f"field_map_r_locations_{token_hash}.json")
+
+    if not os.path.exists(json_file_path):
+        # Let's try to find ANY map file if the user-specific one doesn't exist.
+        # This is a fallback for the case where the trigger-refresh token is different.
+        all_map_files = [f for f in os.listdir(OUTPUT_DIR) if f.startswith('field_map_r_locations_') and f.endswith('.json')]
+        if all_map_files:
+            json_file_path = os.path.join(OUTPUT_DIR, all_map_files[0])
+        else:
+            raise HTTPException(status_code=404, detail="Map data not found. Please trigger a refresh.")
+
+    return FileResponse(json_file_path)
+
 @app.post("/trigger-refresh", tags=["Maps"])
 def trigger_refresh(background_tasks: BackgroundTasks, authorization: str = Header(None)):
     if not authorization:
