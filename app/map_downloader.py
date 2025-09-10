@@ -6,9 +6,15 @@ import json
 import hashlib
 import shutil
 
+# --- Absolute Path Configuration ---
+# Get the absolute path of the directory where this file is located (/app/app)
+_CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Get the project root directory (/app)
+_PROJECT_ROOT = os.path.dirname(_CURRENT_DIR)
+
 API_URL = "https://api.nuwarobotics.com/v1/rms/mission/fields"
-DOWNLOAD_DIR = "maps"
-OUTPUT_DIR = "outputs"
+DOWNLOAD_DIR = os.path.join(_PROJECT_ROOT, "maps")
+OUTPUT_DIR = os.path.join(_PROJECT_ROOT, "outputs")
 
 def get_token_hash(token: str) -> str:
     return hashlib.md5(token.encode()).hexdigest()[:8]
