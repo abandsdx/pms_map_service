@@ -227,7 +227,13 @@ def get_map_file(authorization: str = Header(None)):
     json_file_path = os.path.join(OUTPUT_DIR, f"field_map_r_locations_{token_hash}.json")
 
     if not os.path.exists(json_file_path):
-        return JSONResponse(status_code=404, content={"error": "尚未產生 JSON，請先觸發 /trigger-refresh"})
+        return JSONResponse(
+            status_code=202,  # Use 202 Accepted to indicate the request is being processed
+            content={
+                "status": "processing",
+                "message": "Map data is being generated. Please try again in a few moments."
+            }
+        )
 
     return FileResponse(json_file_path, media_type="application/json", filename=f"field_map_r_locations_{token_hash}.json")
 
