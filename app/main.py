@@ -143,76 +143,40 @@ async def post_ingest(payload: IngestData, user_key: str = Depends(get_ingest_ke
 
 @app.post("/api/status", tags=["Incoming Data"])
 async def post_status(request: Request, user_key: str = Depends(get_ingest_key)):
-    """Endpoint to receive status updates, broadcast to WebSocket and forward to MQTT."""
+    """Endpoint to receive status updates and broadcast them to a specific user."""
     try:
         data = await request.json()
-        # Unified message format
-        message = {"type": "status", "data": data}
-
-        # Broadcast to WebSocket
-        await ws_manager.broadcast_to_user(user_key, message)
-
-        # Forward to MQTT
-        if mqtt_client := mqtt_manager.get_client(user_key):
-            mqtt_client.publish(message)
-
+        await ws_manager.broadcast_to_user(user_key, {"type": "status", "data": data})
         return {"status": "received"}
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON payload.")
 
 @app.post("/api/arrival", tags=["Incoming Data"])
 async def post_arrival(request: Request, user_key: str = Depends(get_ingest_key)):
-    """Endpoint to receive arrival data, broadcast to WebSocket and forward to MQTT."""
+    """Endpoint to receive arrival data and broadcast it to a specific user."""
     try:
         data = await request.json()
-        # Unified message format
-        message = {"type": "arrival", "data": data}
-
-        # Broadcast to WebSocket
-        await ws_manager.broadcast_to_user(user_key, message)
-
-        # Forward to MQTT
-        if mqtt_client := mqtt_manager.get_client(user_key):
-            mqtt_client.publish(message)
-
+        await ws_manager.broadcast_to_user(user_key, {"type": "arrival", "data": data})
         return {"status": "received"}
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON payload.")
 
 @app.post("/api/exception", tags=["Incoming Data"])
 async def post_exception(request: Request, user_key: str = Depends(get_ingest_key)):
-    """Endpoint to receive exception data, broadcast to WebSocket and forward to MQTT."""
+    """Endpoint to receive exception data and broadcast it to a specific user."""
     try:
         data = await request.json()
-        # Unified message format
-        message = {"type": "exception", "data": data}
-
-        # Broadcast to WebSocket
-        await ws_manager.broadcast_to_user(user_key, message)
-
-        # Forward to MQTT
-        if mqtt_client := mqtt_manager.get_client(user_key):
-            mqtt_client.publish(message)
-
+        await ws_manager.broadcast_to_user(user_key, {"type": "exception", "data": data})
         return {"status": "received"}
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON payload.")
 
 @app.post("/api/control", tags=["Incoming Data"])
 async def post_control(request: Request, user_key: str = Depends(get_ingest_key)):
-    """Endpoint to receive control data, broadcast to WebSocket and forward to MQTT."""
+    """Endpoint to receive control data and broadcast it to a specific user."""
     try:
         data = await request.json()
-        # Unified message format
-        message = {"type": "control", "data": data}
-
-        # Broadcast to WebSocket
-        await ws_manager.broadcast_to_user(user_key, message)
-
-        # Forward to MQTT
-        if mqtt_client := mqtt_manager.get_client(user_key):
-            mqtt_client.publish(message)
-
+        await ws_manager.broadcast_to_user(user_key, {"type": "control", "data": data})
         return {"status": "received"}
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON payload.")
