@@ -21,7 +21,8 @@ from app.mqtt_manager import ConnectionManager
 
 app = FastAPI(title="Nuwa Map and Log Service")
 # Define project root and ensure OUTPUT_DIR is an absolute path
-_PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+_CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(_CURRENT_DIR)
 OUTPUT_DIR = os.path.join(_PROJECT_ROOT, "outputs")
 mounted_folders = set()
 
