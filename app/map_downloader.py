@@ -103,17 +103,20 @@ def download_and_parse_maps(token: str):
 
             # 複製 map.jpg
             token_hash = get_token_hash(token)
-            map_output_dir = os.path.join(OUTPUT_DIR, f"{token_hash}_maps")
-            os.makedirs(map_output_dir, exist_ok=True)
+            map_output_dir_abs = os.path.join(OUTPUT_DIR, f"{token_hash}_maps")
+            os.makedirs(map_output_dir_abs, exist_ok=True)
 
-            saved_map_image = None
+            saved_map_image_web_path = None
             if map_image_path and os.path.exists(map_image_path):
-                dst_image_path = os.path.join(
-                    map_output_dir,
-                    f"{field_name}_{floor}_{map_name}_{map_uuid}.jpg".replace("/", "_")
-                )
-                shutil.copyfile(map_image_path, dst_image_path)
-                saved_map_image = dst_image_path
+                image_filename = f"{field_name}_{floor}_{map_name}_{map_uuid}.jpg".replace("/", "_")
+
+                # Absolute path for filesystem operations
+                dst_image_path_abs = os.path.join(map_output_dir_abs, image_filename)
+                shutil.copyfile(map_image_path, dst_image_path_abs)
+
+                # Relative web path for the JSON file, ensuring forward slashes
+                web_path_dir = f"/{token_hash}_maps"
+                saved_map_image_web_path = f"{web_path_dir}/{image_filename}"
 
             # 加入 map 資訊
             field_entry["maps"].append({
@@ -121,8 +124,8 @@ def download_and_parse_maps(token: str):
                 "mapUuid": map_uuid,
                 "floor": floor,
                 "rLocations": r_keys,
-                "coordinates": coordinates,   # ✅ 新增
-                "mapImage": saved_map_image,
+                "coordinates": coordinates,
+                "mapImage": saved_map_image_web_path,
                 "mapOrigin": map_origin
             })
 
