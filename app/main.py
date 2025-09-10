@@ -20,7 +20,9 @@ from app.auth import key_manager
 from app.mqtt_manager import ConnectionManager
 
 app = FastAPI(title="Nuwa Map and Log Service")
-OUTPUT_DIR = "outputs"
+# Define project root and ensure OUTPUT_DIR is an absolute path
+_PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = os.path.join(_PROJECT_ROOT, "outputs")
 mounted_folders = set()
 
 # Setup Jinja2 templates
@@ -229,12 +231,35 @@ def get_map_file(authorization: str = Header(None)):
 
     return FileResponse(json_file_path, media_type="application/json", filename=f"field_map_r_locations_{token_hash}.json")
 
+def mount_user_maps_folder(token_hash: str):
+    """Dynamically mount the user's map folder if it exists and hasn't been mounted."""
+    folder_name = f"{token_hash}_maps"
+    mount_path = f"/{folder_name}"
+
+    if mount_path in mounted_folders:
+        return
+
+    # OUTPUT_DIR is now an absolute path
+    folder_path = os.path.join(OUTPUT_DIR, folder_name)
+
+    if os.path.isdir(folder_path):
+        app.mount(mount_path, StaticFiles(directory=folder_path), name=folder_name)
+        mounted_folders.add(mount_path)
+        print(f"✅ Dynamically mounted {mount_path} => {folder_path}")
+
 @app.post("/trigger-refresh", tags=["Maps"])
 def trigger_refresh(background_tasks: BackgroundTasks, authorization: str = Header(None)):
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing Nuwa RMS Authorization header.")
+
     token_hash = get_token_hash(authorization)
-    background_tasks.add_task(download_and_parse_maps, authorization)
+
+    def background_task(auth_token, t_hash):
+        """Wrapper task to download maps and then mount the folder."""
+        download_and_parse_maps(auth_token)
+        mount_user_maps_folder(t_hash)
+
+    background_tasks.add_task(background_task, authorization, token_hash)
     return {"status": "processing", "message": "Map update and mounting initiated."}
 
 # === WebSocket Endpoint ===
